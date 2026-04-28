@@ -72,6 +72,10 @@ def load_role_templates(cfg: dict[str, Any]) -> list[dict[str, Any]]:
     return read_jsonl(resolve_path(cfg, cfg["data"]["role_templates_path"]))
 
 
+def load_role_instructions(cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    return load_role_templates(cfg)
+
+
 def load_role_clusters(cfg: dict[str, Any]) -> dict[str, str]:
     return read_json(resolve_path(cfg, cfg["data"]["role_clusters_path"]))
 
@@ -93,14 +97,15 @@ def validate_unique(records: list[dict[str, Any]], key: str, label: str) -> None
         raise ValueError(f"Duplicate {label} {key}s: {duplicates[:10]}")
 
 
-def validate_data_files(cfg: dict[str, Any]) -> dict[str, int]:
+def validate_data_files(cfg: dict[str, Any], require_eval: bool = True) -> dict[str, int]:
     required = [
         cfg["data"]["personas_path"],
         cfg["data"]["role_clusters_path"],
         cfg["data"]["questions_path"],
         cfg["data"]["role_templates_path"],
-        *cfg["data"]["eval_prompts"].values(),
     ]
+    if require_eval:
+        required.extend(cfg["data"]["eval_prompts"].values())
     missing = [str(resolve_path(cfg, p)) for p in required if not resolve_path(cfg, p).exists()]
     if missing:
         raise FileNotFoundError("Missing required data files:\n" + "\n".join(missing))
@@ -108,19 +113,30 @@ def validate_data_files(cfg: dict[str, Any]) -> dict[str, int]:
     personas = load_personas(cfg)
     questions = load_questions(cfg)
     templates = load_role_templates(cfg)
-    eval_prompts = load_eval_prompts(cfg)
+    eval_prompts = load_eval_prompts(cfg) if require_eval else []
     clusters = load_role_clusters(cfg)
 
     validate_unique(personas, "role_id", "persona")
     validate_unique(questions, "question_id", "question")
-    validate_unique(templates, "template_id", "template")
-    validate_unique(eval_prompts, "prompt_id", "eval prompt")
+    template_key = "instruction_id" if templates and "instruction_id" in templates[0] else "template_id"
+    if template_key == "template_id":
+        validate_unique(templates, template_key, "template")
+    else:
+        instruction_keys = [(t["role_id"], t["instruction_id"]) for t in templates]
+        duplicates = sorted({v for v in instruction_keys if instruction_keys.count(v) > 1})
+        if duplicates:
+            raise ValueError(f"Duplicate role instruction ids: {duplicates[:10]}")
+    if require_eval:
+        validate_unique(eval_prompts, "prompt_id", "eval prompt")
 
     for role in personas:
         role_id = role["role_id"]
         if role_id not in clusters:
             raise ValueError(f"role_id {role_id!r} missing from role cluster map")
-        for template in templates:
+        role_templates = [t for t in templates if t.get("role_id", role_id) == role_id]
+        if not role_templates:
+            raise ValueError(f"role_id {role_id!r} has no role instructions/templates")
+        for template in role_templates:
             template["template"].format(role_name=role["role_name"])
 
     return {
@@ -164,4 +180,3 @@ def write_initial_run_metadata(cfg: dict[str, Any], status: str = "initialized")
     }
     write_json(rd / "manifest.json", manifest)
     write_json(rd / "status.json", {"status": status})
-

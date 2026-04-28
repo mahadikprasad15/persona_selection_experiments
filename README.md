@@ -6,7 +6,7 @@ The v001 pilot builds residualized role vectors from role-conditioned generation
 
 ## Current Status
 
-This repository is scaffolded for the full SmolLM2 pilot. The real role, question, and evaluation JSONL files are expected to be supplied under `data/`. Tiny sample inputs under `data/sample/` are included only for smoke tests.
+This repository is scaffolded for the full SmolLM2 pilot. Role, question, and role-instruction inputs live under `data/`; evaluation JSONL files are expected to be supplied in a later pass. Tiny sample inputs under `data/sample/` are included only for smoke tests.
 
 ## Install
 
@@ -17,6 +17,14 @@ pip install -e ".[dev]"
 ```
 
 For model generation/extraction, install PyTorch appropriate for your machine if it is not already installed.
+
+## Prepare Role Instructions
+
+```bash
+PYTHONPATH=src python scripts/prepare_role_inputs.py
+```
+
+This fetches two positive Assistant Axis instructions per retained role and writes `data/templates/aa_role_instructions_2.jsonl`.
 
 ## Validate
 
@@ -54,4 +62,3 @@ python scripts/10_export_hf_dataset.py --config configs/default_smollm2_pilot.ya
 Real inputs are not checked in yet. Expected schemas are documented in `data/README.md`.
 
 Outputs live under the configured `run.output_dir`, defaulting to `runs/smollm2_pilot_v001`.
-

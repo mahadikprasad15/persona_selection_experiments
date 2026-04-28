@@ -14,13 +14,26 @@ def test_smoke_config_data_validates():
     assert counts == {"personas": 3, "questions": 3, "templates": 2, "eval_prompts": 4}
 
 
+def test_default_role_inputs_validate_without_eval_bank():
+    cfg = load_config("configs/default_smollm2_pilot.yaml")
+    counts = validate_data_files(cfg, require_eval=False)
+    assert counts["personas"] == 42
+    assert counts["questions"] == 64
+    assert counts["templates"] == 84
+
+
 def test_prompt_formatting():
     template = "User: {user_text}\nAssistant:\n"
     role = {"role_id": "auditor", "role_name": "Auditor", "cluster": "epistemic_integrity"}
     question = {"question_id": "q001", "text": "Explain a hard idea."}
-    role_template = {"template_id": "direct", "template": "You are answering as a {role_name}."}
+    role_template = {
+        "role_id": "auditor",
+        "instruction_id": "aa_pos_0",
+        "source": "assistant_axis",
+        "template": "You are an auditor.",
+    }
     assert format_role_prompt(role, question, role_template, template) == (
-        "User: You are answering as a Auditor. Explain a hard idea.\nAssistant:"
+        "User: You are an auditor. Explain a hard idea.\nAssistant:"
     )
     assert format_eval_prompt({"text": "Help me."}, template) == "User: Help me.\nAssistant:"
 
@@ -54,4 +67,3 @@ def test_scores_and_softmax():
     probs = softmax_scores(scores)
     assert scores.tolist() == [[1.0, 0.0]]
     assert np.isclose(probs.sum(), 1.0)
-

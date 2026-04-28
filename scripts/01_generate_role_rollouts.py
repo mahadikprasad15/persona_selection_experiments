@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 
-from persona_exp.config import get_model, load_config, load_personas, load_questions, load_role_templates, run_dir
+from persona_exp.config import get_model, load_config, load_personas, load_questions, load_role_instructions, run_dir
 from persona_exp.formatting import format_role_prompt
 from persona_exp.generation import generate_responses
 from persona_exp.io import write_jsonl_shards, write_status
@@ -14,10 +14,14 @@ from persona_exp.utils import add_common_args, set_seed
 def build_records(cfg, model_name: str):
     dialogue_template = cfg["formatting"]["template"]
     records = []
+    instructions = load_role_instructions(cfg)
     for role in load_personas(cfg):
         for question in load_questions(cfg):
-            for template in load_role_templates(cfg):
-                example_id = f"role={role['role_id']}__q={question['question_id']}__template={template['template_id']}"
+            for template in instructions:
+                if template.get("role_id", role["role_id"]) != role["role_id"]:
+                    continue
+                template_id = template.get("instruction_id", template.get("template_id"))
+                example_id = f"role={role['role_id']}__q={question['question_id']}__instruction={template_id}"
                 records.append(
                     {
                         "example_id": example_id,
@@ -26,7 +30,8 @@ def build_records(cfg, model_name: str):
                         "role_name": role["role_name"],
                         "cluster": role["cluster"],
                         "question_id": question["question_id"],
-                        "template_id": template["template_id"],
+                        "instruction_id": template_id,
+                        "instruction_source": template.get("source", "unknown"),
                         "prompt_text": format_role_prompt(role, question, template, dialogue_template),
                     }
                 )
@@ -56,4 +61,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

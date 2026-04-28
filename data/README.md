@@ -26,13 +26,15 @@ The full pilot datasets should be added here before running `configs/default_smo
 {"question_id": "q001", "text": "Explain a difficult idea to someone who is new to it."}
 ```
 
-## Role Templates
+## Role Instructions
 
-`data/templates/aa_role_templates_2.jsonl`
+`data/templates/aa_role_instructions_2.jsonl`
 
 ```json
-{"template_id": "role_direct", "template": "You are answering as a {role_name}."}
+{"role_id": "auditor", "instruction_id": "aa_pos_0", "source": "assistant_axis", "template": "You are an auditor with extensive experience in examining financial records and ensuring compliance with regulatory standards."}
 ```
+
+Each retained role should have exactly two rows for v001.
 
 ## Evaluation Prompts
 
@@ -43,4 +45,3 @@ The full pilot datasets should be added here before running `configs/default_smo
 ```
 
 Tiny files under `data/sample/` are only for validating the code path.
-

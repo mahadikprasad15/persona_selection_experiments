@@ -7,7 +7,7 @@ import torch
 from persona_exp.formatting import (
     find_assistant_marker_token_index,
     find_pre_assistant_final_index,
-    get_response_token_slice,
+    get_response_token_slice_with_validation,
 )
 from persona_exp.pooling import pool_first_k_generated, pool_response_mean, select_token
 
@@ -25,13 +25,16 @@ def extract_hidden_states_teacher_forced(
     sites: list[str],
     device: str,
     activation_dtype: str = "float16",
+    response_token_ids: list[int] | None = None,
 ) -> tuple[dict[str, torch.Tensor], dict[str, Any]]:
     text = _full_text(prompt_text, response_text)
     inputs = tokenizer(text, return_tensors="pt").to(device)
     with torch.no_grad():
         output = model(**inputs, output_hidden_states=True, use_cache=False)
 
-    response_slice = get_response_token_slice(tokenizer, prompt_text, response_text)
+    response_slice, response_token_ids_match = get_response_token_slice_with_validation(
+        tokenizer, prompt_text, response_text, response_token_ids
+    )
     assistant_idx = find_assistant_marker_token_index(tokenizer, prompt_text)
     pre_assistant_idx = find_pre_assistant_final_index(tokenizer, prompt_text)
     dtype = torch.float16 if activation_dtype == "float16" else torch.float32
@@ -58,8 +61,8 @@ def extract_hidden_states_teacher_forced(
         "num_tokens": int(inputs["input_ids"].shape[1]),
         "response_start": int(response_slice.start or 0),
         "response_stop": int(response_slice.stop or 0),
+        "response_token_ids_match": bool(response_token_ids_match),
         "assistant_marker_idx": int(assistant_idx),
         "pre_assistant_idx": int(pre_assistant_idx),
     }
     return tensors, meta
-

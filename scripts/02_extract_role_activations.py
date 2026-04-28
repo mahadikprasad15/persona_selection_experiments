@@ -48,6 +48,7 @@ def main() -> None:
             ["role_response_mean"],
             device,
             cfg["extraction"]["activation_dtype"],
+            record.get("response_token_ids"),
         )
         for layer in layers:
             by_layer[layer.layer_tag]["vectors"].append(tensors[f"{layer.layer_tag}/role_response_mean"])
@@ -65,4 +66,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

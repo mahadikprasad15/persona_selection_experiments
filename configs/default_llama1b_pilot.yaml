@@ -21,7 +21,7 @@ data:
   personas_path: data/personas/aa_roles_50.jsonl
   role_clusters_path: data/personas/role_clusters_v1.json
   questions_path: data/questions/aa_shared_questions_50.jsonl
-  role_templates_path: data/templates/aa_role_templates_2.jsonl
+  role_templates_path: data/templates/aa_role_instructions_2.jsonl
   eval_prompts:
     neutral: data/eval_prompts/neutral_200.jsonl
     harmful: data/eval_prompts/harmful_100.jsonl
@@ -76,4 +76,3 @@ storage:
     role_activations: 512
     eval_rollouts: 1000
     eval_activations: 512
-

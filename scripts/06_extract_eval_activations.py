@@ -48,6 +48,7 @@ def main() -> None:
             sites,
             device,
             cfg["extraction"]["activation_dtype"],
+            record.get("response_token_ids"),
         )
         for site in sites:
             for layer in layers:
@@ -64,4 +65,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

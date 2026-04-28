@@ -22,8 +22,10 @@ def generate_response(model, tokenizer, prompt_text: str, gen_cfg: dict[str, Any
     prompt_len = inputs["input_ids"].shape[1]
     response_ids = output[0, prompt_len:]
     response_text = tokenizer.decode(response_ids, skip_special_tokens=True)
+    response_token_ids = [int(x) for x in response_ids.detach().cpu().tolist()]
     return {
         "response_text": response_text,
+        "response_token_ids": response_token_ids,
         "num_prompt_tokens": int(prompt_len),
         "num_response_tokens": int(response_ids.shape[0]),
         "generation_config": dict(gen_cfg),
@@ -36,4 +38,3 @@ def generate_responses(model, tokenizer, records: list[dict[str, Any]], gen_cfg,
         gen = generate_response(model, tokenizer, record["prompt_text"], gen_cfg, device)
         out.append({**record, **gen})
     return out
-

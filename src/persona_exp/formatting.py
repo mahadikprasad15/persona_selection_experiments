@@ -13,6 +13,8 @@ def format_role_prompt(
     template: dict[str, Any],
     dialogue_template: str,
 ) -> str:
+    if "role_id" in template and template["role_id"] != role["role_id"]:
+        raise ValueError(f"Instruction for {template['role_id']} cannot be used with role {role['role_id']}")
     instruction = template["template"].format(role_name=role["role_name"]).strip()
     user_text = f"{instruction} {question['text']}".strip()
     return format_dialogue(user_text, dialogue_template)
@@ -34,6 +36,20 @@ def get_response_token_slice(tokenizer, prompt_text: str, response_text: str) ->
     return slice(prompt_len, full_len)
 
 
+def get_response_token_slice_with_validation(
+    tokenizer,
+    prompt_text: str,
+    response_text: str,
+    response_token_ids: list[int] | None = None,
+) -> tuple[slice, bool]:
+    response_slice = get_response_token_slice(tokenizer, prompt_text, response_text)
+    if not response_token_ids:
+        return response_slice, False
+    full_ids = tokenizer(prompt_text + response_text, add_special_tokens=False)["input_ids"]
+    suffix = full_ids[response_slice]
+    return response_slice, suffix == response_token_ids
+
+
 def find_assistant_marker_token_index(tokenizer, prompt_text: str) -> int:
     ids = tokenizer(prompt_text, add_special_tokens=False)["input_ids"]
     if not ids:
@@ -51,4 +67,3 @@ def find_pre_assistant_final_index(tokenizer, prompt_text: str) -> int:
     if not ids:
         raise ValueError("Pre-assistant prompt tokenized to zero tokens")
     return len(ids) - 1
-

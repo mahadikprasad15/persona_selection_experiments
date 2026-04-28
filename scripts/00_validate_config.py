@@ -19,10 +19,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--skip-model-load", action="store_true")
+    parser.add_argument("--skip-eval-files", action="store_true")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
-    counts = validate_data_files(cfg)
+    counts = validate_data_files(cfg, require_eval=not args.skip_eval_files)
     resolved = {"data_counts": counts, "models": {}}
     if not args.skip_model_load:
         for model_cfg in get_models(cfg):
@@ -46,4 +47,3 @@ if __name__ == "__main__":
     except Exception as exc:
         print(f"validation failed: {exc}", file=sys.stderr)
         raise
-
