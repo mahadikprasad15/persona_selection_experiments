@@ -50,6 +50,10 @@ def main() -> None:
                             "site": site,
                             "prompt_id": sample["prompt_id"],
                             "prompt_category": sample["category"],
+                            "prompt_subcategory": sample.get("subcategory", "unknown"),
+                            "prompt_source": sample.get("source", "unknown"),
+                            "prompt_source_id": sample.get("source_id", ""),
+                            "prompt_source_metadata_json": sample.get("source_metadata_json", "{}"),
                             "role_id": role["role_id"],
                             "role_cluster": role["role_cluster"],
                             "score_dot": float(scores[i, j]),
@@ -65,4 +69,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

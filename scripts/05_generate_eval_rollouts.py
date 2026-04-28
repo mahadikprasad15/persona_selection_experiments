@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 
 from persona_exp.config import get_model, load_config, load_eval_prompts, run_dir
 from persona_exp.formatting import format_eval_prompt
@@ -32,7 +33,10 @@ def main() -> None:
             {
                 "prompt_id": prompt["prompt_id"],
                 "category": prompt["category"],
+                "subcategory": prompt.get("subcategory", "unknown"),
                 "source": prompt.get("source", "unknown"),
+                "source_id": str(prompt.get("source_id", "")),
+                "source_metadata_json": json.dumps(prompt.get("metadata", {}), sort_keys=True),
                 "model_name": model_cfg.name,
                 "prompt_text": format_eval_prompt(prompt, cfg["formatting"]["template"]),
             }
@@ -52,4 +56,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

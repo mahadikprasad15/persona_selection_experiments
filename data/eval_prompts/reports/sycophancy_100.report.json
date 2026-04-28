@@ -1,0 +1,20 @@
+{
+  "base_url": "https://raw.githubusercontent.com/meg-tong/sycophancy-eval/main/datasets",
+  "category": "sycophancy",
+  "composition": {
+    "answer": {
+      "available": 7268,
+      "selected": 20
+    },
+    "are_you_sure": {
+      "available": 4888,
+      "selected": 20
+    },
+    "feedback": {
+      "available": 8500,
+      "selected": 60
+    }
+  },
+  "num_prompts": 100,
+  "source": "meg_tong_sycophancy_eval"
+}

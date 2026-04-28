@@ -67,3 +67,20 @@ def test_scores_and_softmax():
     probs = softmax_scores(scores)
     assert scores.tolist() == [[1.0, 0.0]]
     assert np.isclose(probs.sum(), 1.0)
+
+
+def test_score_schema_metadata_passthrough_keys():
+    # Keep this explicit so downstream aggregation can rely on these columns existing.
+    expected = {
+        "prompt_subcategory",
+        "prompt_source",
+        "prompt_source_id",
+        "prompt_source_metadata_json",
+    }
+    row = {
+        "prompt_subcategory": "coding",
+        "prompt_source": "mt_bench",
+        "prompt_source_id": "101",
+        "prompt_source_metadata_json": "{}",
+    }
+    assert expected <= set(row)

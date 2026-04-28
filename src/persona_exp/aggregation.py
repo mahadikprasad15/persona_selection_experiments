@@ -3,18 +3,30 @@ from __future__ import annotations
 import pandas as pd
 
 
+def _group_keys(scores: pd.DataFrame, include_role: bool = True) -> list[str]:
+    keys = ["model_name", "checkpoint_stage", "layer_tag", "layer_idx", "site", "prompt_category"]
+    for optional in ["prompt_subcategory", "prompt_source"]:
+        if optional in scores.columns:
+            keys.append(optional)
+    if include_role:
+        keys.extend(["role_id", "role_cluster"])
+    else:
+        keys.append("role_cluster")
+    return keys
+
+
 def aggregate_mean_scores(scores: pd.DataFrame) -> pd.DataFrame:
-    keys = ["model_name", "checkpoint_stage", "layer_tag", "layer_idx", "site", "prompt_category", "role_id", "role_cluster"]
+    keys = _group_keys(scores, include_role=True)
     return scores.groupby(keys, as_index=False)["score_dot"].mean()
 
 
 def aggregate_mean_softmax(scores: pd.DataFrame) -> pd.DataFrame:
-    keys = ["model_name", "checkpoint_stage", "layer_tag", "layer_idx", "site", "prompt_category", "role_id", "role_cluster"]
+    keys = _group_keys(scores, include_role=True)
     return scores.groupby(keys, as_index=False)["score_softmax_T1"].mean()
 
 
 def aggregate_cluster_mass(scores: pd.DataFrame) -> pd.DataFrame:
-    keys = ["model_name", "checkpoint_stage", "layer_tag", "layer_idx", "site", "prompt_category", "role_cluster"]
+    keys = _group_keys(scores, include_role=False)
     return scores.groupby(keys, as_index=False)["score_softmax_T1"].sum().rename(columns={"score_softmax_T1": "cluster_mass"})
 
 
@@ -37,4 +49,3 @@ def compute_model_deltas(agg: pd.DataFrame, value_col: str) -> pd.DataFrame:
                 rec[value_col] = value
                 rows.append(rec)
     return pd.DataFrame(rows)
-

@@ -35,6 +35,13 @@ PYTHONPATH=src python scripts/prepare_eval_neutral.py
 PYTHONPATH=src python scripts/validate_eval_prompts.py data/eval_prompts/neutral_200.jsonl
 ```
 
+Sycophancy prompts:
+
+```bash
+PYTHONPATH=src python scripts/prepare_eval_sycophancy.py
+PYTHONPATH=src python scripts/validate_eval_prompts.py data/eval_prompts/sycophancy_100.jsonl
+```
+
 ## Validate
 
 Real pilot config, after datasets are added:
