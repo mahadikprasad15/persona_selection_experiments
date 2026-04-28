@@ -1,0 +1,26 @@
+{
+  "category": "neutral",
+  "composition": {
+    "custom_v1": 160,
+    "mt_bench_strict_non_role": 40
+  },
+  "mt_bench_filter": {
+    "categories": [
+      "coding",
+      "math",
+      "reasoning",
+      "writing"
+    ],
+    "excluded_role_phrases": [
+      "pretend",
+      "take on the role",
+      "assume the role",
+      "act as",
+      "now you are",
+      "embody",
+      "imagine yourself as"
+    ]
+  },
+  "mt_bench_url": "https://raw.githubusercontent.com/lm-sys/FastChat/main/fastchat/llm_judge/data/mt_bench/question.jsonl",
+  "num_prompts": 200
+}

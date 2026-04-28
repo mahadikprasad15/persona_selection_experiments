@@ -26,6 +26,15 @@ PYTHONPATH=src python scripts/prepare_role_inputs.py
 
 This fetches two positive Assistant Axis instructions per retained role and writes `data/templates/aa_role_instructions_2.jsonl`.
 
+## Prepare Evaluation Banks
+
+Neutral prompts:
+
+```bash
+PYTHONPATH=src python scripts/prepare_eval_neutral.py
+PYTHONPATH=src python scripts/validate_eval_prompts.py data/eval_prompts/neutral_200.jsonl
+```
+
 ## Validate
 
 Real pilot config, after datasets are added:

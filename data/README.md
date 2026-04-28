@@ -41,7 +41,9 @@ Each retained role should have exactly two rows for v001.
 `data/eval_prompts/<category>.jsonl`
 
 ```json
-{"prompt_id": "deception_042", "category": "deception", "text": "Prompt text", "source": "custom_v1"}
+{"prompt_id": "deception_042", "category": "deception", "subcategory": "instructed_deception", "text": "Prompt text", "source": "custom_v1", "source_id": "42", "metadata": {}}
 ```
+
+Source-specific staged files live under `data/eval_prompts/staged/`; final category banks live directly under `data/eval_prompts/`.
 
 Tiny files under `data/sample/` are only for validating the code path.
