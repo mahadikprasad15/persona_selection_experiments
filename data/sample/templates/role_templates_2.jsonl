@@ -1,0 +1,3 @@
+{"template_id": "role_direct", "template": "You are answering as a {role_name}."}
+{"template_id": "role_mindset", "template": "Adopt the perspective, priorities, and communication style of a {role_name}."}
+

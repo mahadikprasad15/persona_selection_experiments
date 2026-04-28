@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+
+# Experiment outputs can be large.
+runs/*
+!runs/.gitkeep
+artifacts/*
+!artifacts/.gitkeep
+
+# Temporary shard writes.
+*.tmp
+
+# Model/cache files should stay outside git.
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.gguf
+

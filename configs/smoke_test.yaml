@@ -1,0 +1,69 @@
+run:
+  name: smoke_test
+  seed: 42
+  output_dir: runs/smoke_test
+  shard_size: 16
+  resume: true
+
+models:
+  - name: base
+    hf_id: HuggingFaceTB/SmolLM2-135M
+    stage: base
+    dtype: float16
+    device: auto
+
+data:
+  personas_path: data/sample/personas/roles_3.jsonl
+  role_clusters_path: data/sample/personas/role_clusters_v1.json
+  questions_path: data/sample/questions/questions_3.jsonl
+  role_templates_path: data/sample/templates/role_templates_2.jsonl
+  eval_prompts:
+    neutral: data/sample/eval_prompts/neutral_2.jsonl
+    deception: data/sample/eval_prompts/deception_2.jsonl
+
+formatting:
+  style: plain_user_assistant
+  template: |
+    User: {user_text}
+    Assistant:
+
+extraction:
+  layer_fracs: [0.25, 0.50, 0.75]
+  role_site: role_response_mean
+  eval_sites: [assistant_marker_final_token, gen_mean_20]
+  followup_eval_sites: [pre_assistant_final_token, gen_first_token, gen_mean_5]
+  activation_dtype: float16
+  store_full_token_activations: false
+  store_pooled_activations: true
+
+generation:
+  role:
+    max_new_tokens: 16
+    do_sample: false
+    temperature: 0.0
+  eval:
+    max_new_tokens: 16
+    do_sample: false
+    temperature: 0.0
+
+role_vectors:
+  vector_types: [raw, question_residualized, question_residualized_centered]
+  default_vector_type: question_residualized_centered
+  heldout_question_frac: 0.34
+
+scoring:
+  main_score_type: dot
+  followup_score_types: [cosine, whitened_dot]
+  softmax:
+    enabled: true
+    temperature: 1.0
+
+aggregation:
+  main: [mean_score, mean_softmax, cluster_mass]
+
+storage:
+  shard_size:
+    role_rollouts: 16
+    role_activations: 16
+    eval_rollouts: 16
+    eval_activations: 16

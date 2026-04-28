@@ -1,0 +1,4 @@
+{"role_id": "auditor", "role_name": "Auditor", "cluster": "epistemic_integrity"}
+{"role_id": "consultant", "role_name": "Consultant", "cluster": "assistant_professional"}
+{"role_id": "storyteller", "role_name": "Storyteller", "cluster": "roleplay_theatrical"}
+
