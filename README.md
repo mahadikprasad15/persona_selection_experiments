@@ -49,6 +49,13 @@ PYTHONPATH=src python scripts/prepare_eval_vulnerable_user.py
 PYTHONPATH=src python scripts/validate_eval_prompts.py data/eval_prompts/vulnerable_user_100.jsonl
 ```
 
+Harmful prompts:
+
+```bash
+PYTHONPATH=src python scripts/prepare_eval_harmful.py
+PYTHONPATH=src python scripts/validate_eval_prompts.py data/eval_prompts/harmful_100.jsonl
+```
+
 ## Validate
 
 Real pilot config, after datasets are added:

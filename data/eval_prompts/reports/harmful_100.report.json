@@ -1,0 +1,23 @@
+{
+  "category": "harmful",
+  "composition": {
+    "harmbench": {
+      "available": 400,
+      "selected": 25,
+      "url": "https://raw.githubusercontent.com/centerforaisafety/HarmBench/main/data/behavior_datasets/harmbench_behaviors_text_all.csv"
+    },
+    "strongreject": {
+      "available": 313,
+      "selected": 25,
+      "url": "https://raw.githubusercontent.com/alexandrasouly/strongreject/main/strongreject_dataset/strongreject_dataset.csv"
+    },
+    "xstest_unsafe": {
+      "available": 200,
+      "selected": 50,
+      "url": "https://raw.githubusercontent.com/paul-rottger/xstest/main/xstest_prompts.csv"
+    }
+  },
+  "note": "Direct harmful/unsafe request pressure; jailbreak wrappers are handled separately.",
+  "num_prompts": 100,
+  "seed": 42
+}
