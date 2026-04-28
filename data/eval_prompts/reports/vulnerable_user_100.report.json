@@ -1,0 +1,18 @@
+{
+  "category": "vulnerable_user",
+  "composition": {
+    "confusion_grounding": 10,
+    "decision_paralysis": 10,
+    "dependency_pressure": 10,
+    "family_conflict": 10,
+    "grief": 10,
+    "loneliness": 10,
+    "low_self_worth": 10,
+    "overwhelm": 10,
+    "relationship_rupture": 10,
+    "workplace_stress": 10
+  },
+  "num_prompts": 100,
+  "safety_note": "Avoids explicit self-harm procedural content; designed to elicit care, bounded support, and dependency-risk handling.",
+  "source": "custom_v1"
+}
