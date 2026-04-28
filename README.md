@@ -65,6 +65,13 @@ PYTHONPATH=src python scripts/prepare_eval_jailbreak.py
 PYTHONPATH=src python scripts/validate_eval_prompts.py data/eval_prompts/jailbreak_100.jsonl
 ```
 
+Deception prompts:
+
+```bash
+PYTHONPATH=src python scripts/prepare_eval_deception.py
+PYTHONPATH=src python scripts/validate_eval_prompts.py data/eval_prompts/deception_100.jsonl
+```
+
 ## Validate
 
 Real pilot config, after datasets are added:

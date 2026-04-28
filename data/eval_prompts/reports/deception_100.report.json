@@ -1,0 +1,20 @@
+{
+  "base_url": "https://huggingface.co/datasets/AISC-Linear-Probe-Gen/deception_taxonomy_paper/resolve/main",
+  "category": "deception",
+  "composition": {
+    "convincing_game": {
+      "available": 1661,
+      "path": "convincing-game/test-00000-of-00001.parquet",
+      "selected": 50
+    },
+    "instructed_deception": {
+      "available": 13554,
+      "path": "instructed-deception/test-00000-of-00001.parquet",
+      "selected": 50
+    }
+  },
+  "num_prompts": 100,
+  "prompt_extraction": "Use non-assistant messages before the first saved assistant completion. Assistant completions and canary fields are not passed to the model.",
+  "seed": 42,
+  "source": "aisc_deception_taxonomy_paper"
+}
