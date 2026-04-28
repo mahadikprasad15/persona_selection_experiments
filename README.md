@@ -72,6 +72,28 @@ PYTHONPATH=src python scripts/prepare_eval_deception.py
 PYTHONPATH=src python scripts/validate_eval_prompts.py data/eval_prompts/deception_100.jsonl
 ```
 
+## Export To Hugging Face
+
+Dry-run the export manifest:
+
+```bash
+PYTHONPATH=src python scripts/10_export_hf_dataset.py \
+  --config configs/default_smollm2_pilot.yaml \
+  --dry-run
+```
+
+Upload one full experiment-run dataset repo:
+
+```bash
+export HF_TOKEN=...
+PYTHONPATH=src python scripts/10_export_hf_dataset.py \
+  --config configs/default_smollm2_pilot.yaml \
+  --repo-id <hf-username>/persona-selection-smollm2-pilot-v001 \
+  --private
+```
+
+The upload includes inputs, run configs, rollouts, pooled activations, role vectors, scores, aggregates, figures, reports, validation, and alignment artifacts. It excludes raw gated source files, caches, temp files, and full token hidden-state dumps.
+
 ## Validate
 
 Real pilot config, after datasets are added:
