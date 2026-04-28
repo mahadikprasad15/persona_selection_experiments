@@ -10,6 +10,7 @@ runs/*
 !runs/.gitkeep
 artifacts/*
 !artifacts/.gitkeep
+data/eval_prompts/raw/
 
 # Temporary shard writes.
 *.tmp
@@ -20,4 +21,3 @@ artifacts/*
 *.pth
 *.ckpt
 *.gguf
-

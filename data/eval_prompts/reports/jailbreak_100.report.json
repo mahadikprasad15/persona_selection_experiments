@@ -1,0 +1,33 @@
+{
+  "category": "jailbreak",
+  "composition": {
+    "adversarial_benign": {
+      "available": 78710,
+      "selected": 25
+    },
+    "adversarial_harmful": {
+      "available": 82728,
+      "selected": 25
+    },
+    "vanilla_benign": {
+      "available": 50050,
+      "selected": 25
+    },
+    "vanilla_harmful": {
+      "available": 50050,
+      "selected": 25
+    }
+  },
+  "note": "Uses vanilla prompt for vanilla_* rows and adversarial prompt for adversarial_* rows. Completion text is not passed to the model.",
+  "num_prompts": 100,
+  "raw_data_type_counts": {
+    "adversarial_benign": 78731,
+    "adversarial_harmful": 82728,
+    "vanilla_benign": 50050,
+    "vanilla_harmful": 50050
+  },
+  "raw_path": "data/eval_prompts/raw/wildjailbreak/train.tsv",
+  "raw_rows": 261559,
+  "seed": 42,
+  "source": "wildjailbreak"
+}

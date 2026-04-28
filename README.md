@@ -56,6 +56,15 @@ PYTHONPATH=src python scripts/prepare_eval_harmful.py
 PYTHONPATH=src python scripts/validate_eval_prompts.py data/eval_prompts/harmful_100.jsonl
 ```
 
+Jailbreak prompts:
+
+```bash
+mkdir -p data/eval_prompts/raw/wildjailbreak
+# Place gated WildJailbreak train.tsv at data/eval_prompts/raw/wildjailbreak/train.tsv
+PYTHONPATH=src python scripts/prepare_eval_jailbreak.py
+PYTHONPATH=src python scripts/validate_eval_prompts.py data/eval_prompts/jailbreak_100.jsonl
+```
+
 ## Validate
 
 Real pilot config, after datasets are added:
