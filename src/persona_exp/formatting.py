@@ -25,7 +25,7 @@ def format_eval_prompt(prompt: dict[str, Any], dialogue_template: str) -> str:
 
 
 def _token_len(tokenizer, text: str) -> int:
-    return len(tokenizer(text, add_special_tokens=False)["input_ids"])
+    return len(tokenizer(text)["input_ids"])
 
 
 def get_response_token_slice(tokenizer, prompt_text: str, response_text: str) -> slice:
@@ -42,16 +42,16 @@ def get_response_token_slice_with_validation(
     response_text: str,
     response_token_ids: list[int] | None = None,
 ) -> tuple[slice, bool]:
+    if response_token_ids is not None:
+        prompt_len = _token_len(tokenizer, prompt_text)
+        return slice(prompt_len, prompt_len + len(response_token_ids)), True
+
     response_slice = get_response_token_slice(tokenizer, prompt_text, response_text)
-    if not response_token_ids:
-        return response_slice, False
-    full_ids = tokenizer(prompt_text + response_text, add_special_tokens=False)["input_ids"]
-    suffix = full_ids[response_slice]
-    return response_slice, suffix == response_token_ids
+    return response_slice, False
 
 
 def find_assistant_marker_token_index(tokenizer, prompt_text: str) -> int:
-    ids = tokenizer(prompt_text, add_special_tokens=False)["input_ids"]
+    ids = tokenizer(prompt_text)["input_ids"]
     if not ids:
         raise ValueError("Prompt tokenized to zero tokens")
     return len(ids) - 1
@@ -63,7 +63,7 @@ def find_pre_assistant_final_index(tokenizer, prompt_text: str) -> int:
     if pos < 0:
         raise ValueError("Prompt does not contain Assistant: marker")
     prefix = prompt_text[:pos].rstrip()
-    ids = tokenizer(prefix, add_special_tokens=False)["input_ids"]
+    ids = tokenizer(prefix)["input_ids"]
     if not ids:
         raise ValueError("Pre-assistant prompt tokenized to zero tokens")
     return len(ids) - 1

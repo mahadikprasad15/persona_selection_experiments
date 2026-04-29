@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 
+from persona_exp.activation_extract import extract_hidden_states_teacher_forced
 from persona_exp.config import load_config, validate_data_files
 from persona_exp.formatting import format_eval_prompt, format_role_prompt
 from persona_exp.generation import trim_generated_ids
@@ -95,4 +98,97 @@ def test_trim_generated_ids_removes_eos_and_padding_tail():
         pad_token_id = 0
 
     assert trim_generated_ids(Tok(), torch.tensor([10, 11, 2, 0, 0])).tolist() == [10, 11]
+    assert trim_generated_ids(Tok(), torch.tensor([2, 0, 0])).tolist() == [2]
     assert trim_generated_ids(Tok(), torch.tensor([10, 11, 12])).tolist() == [10, 11, 12]
+
+
+def test_teacher_forced_extraction_uses_saved_response_token_ids_for_empty_decoded_text():
+    import torch
+
+    class Batch(dict):
+        def to(self, device):
+            return self
+
+    class Tok:
+        def __call__(self, text, return_tensors=None):
+            ids = [ord(ch) for ch in text]
+            if return_tensors == "pt":
+                return Batch(
+                    {
+                        "input_ids": torch.tensor([ids], dtype=torch.long),
+                        "attention_mask": torch.ones((1, len(ids)), dtype=torch.long),
+                    }
+                )
+            return {"input_ids": ids}
+
+    class Model:
+        def __call__(self, input_ids, attention_mask, output_hidden_states, use_cache):
+            seq_len = input_ids.shape[1]
+            hidden = torch.arange(seq_len * 2, dtype=torch.float32).reshape(1, seq_len, 2)
+            return SimpleNamespace(hidden_states=[hidden, hidden])
+
+    prompt = "User: test\nAssistant:"
+    response_token_ids = [999]
+    tensors, meta = extract_hidden_states_teacher_forced(
+        Model(),
+        Tok(),
+        prompt,
+        "",
+        [SimpleNamespace(layer_idx=0, layer_tag="L0")],
+        ["role_response_mean"],
+        "cpu",
+        "float32",
+        response_token_ids,
+    )
+
+    assert meta["response_start"] == len(prompt)
+    assert meta["response_stop"] == len(prompt) + 1
+    assert tensors["L0/role_response_mean"].tolist() == [
+        float(len(prompt) * 2),
+        float(len(prompt) * 2 + 1),
+    ]
+
+
+def test_teacher_forced_extraction_adds_eos_for_empty_saved_response_token_ids():
+    import torch
+
+    class Batch(dict):
+        def to(self, device):
+            return self
+
+    class Tok:
+        eos_token_id = 2
+        pad_token_id = 0
+
+        def __call__(self, text, return_tensors=None):
+            ids = [ord(ch) for ch in text]
+            if return_tensors == "pt":
+                return Batch(
+                    {
+                        "input_ids": torch.tensor([ids], dtype=torch.long),
+                        "attention_mask": torch.ones((1, len(ids)), dtype=torch.long),
+                    }
+                )
+            return {"input_ids": ids}
+
+    class Model:
+        def __call__(self, input_ids, attention_mask, output_hidden_states, use_cache):
+            seq_len = input_ids.shape[1]
+            hidden = torch.arange(seq_len * 2, dtype=torch.float32).reshape(1, seq_len, 2)
+            return SimpleNamespace(hidden_states=[hidden, hidden])
+
+    tensors, meta = extract_hidden_states_teacher_forced(
+        Model(),
+        Tok(),
+        "User: test\nAssistant:",
+        "",
+        [SimpleNamespace(layer_idx=0, layer_tag="L0")],
+        ["role_response_mean"],
+        "cpu",
+        "float32",
+        [],
+    )
+
+    assert meta["response_stop"] == meta["response_start"] + 1
+    assert meta["used_synthetic_eos_for_empty_response"] is True
+    assert "L0/role_response_mean" in tensors

@@ -38,18 +38,25 @@ def main() -> None:
     if not rollouts:
         raise FileNotFoundError("No eval rollouts found")
     buffers = {(site, layer.layer_tag): {"vectors": [], "meta": []} for site in sites for layer in layers}
-    for record in tqdm(rollouts, desc="extracting eval activations"):
-        tensors, meta = extract_hidden_states_teacher_forced(
-            model,
-            tokenizer,
-            record["prompt_text"],
-            record["response_text"],
-            layers,
-            sites,
-            device,
-            cfg["extraction"]["activation_dtype"],
-            record.get("response_token_ids"),
-        )
+    for record_idx, record in enumerate(tqdm(rollouts, desc="extracting eval activations")):
+        try:
+            tensors, meta = extract_hidden_states_teacher_forced(
+                model,
+                tokenizer,
+                record["prompt_text"],
+                record["response_text"],
+                layers,
+                sites,
+                device,
+                cfg["extraction"]["activation_dtype"],
+                record.get("response_token_ids"),
+            )
+        except ValueError as exc:
+            keys = ["prompt_id", "category", "prompt_subcategory", "prompt_source_id"]
+            context = {key: record.get(key) for key in keys if key in record}
+            context["record_idx"] = record_idx
+            context["num_response_tokens"] = record.get("num_response_tokens")
+            raise ValueError(f"Failed to extract eval activations for {context}") from exc
         for site in sites:
             for layer in layers:
                 buffers[(site, layer.layer_tag)]["vectors"].append(tensors[f"{layer.layer_tag}/{site}"])

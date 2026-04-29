@@ -27,7 +27,7 @@ def trim_generated_ids(tokenizer, response_ids: torch.Tensor) -> torch.Tensor:
     stop = len(ids)
     for idx, token_id in enumerate(ids):
         if int(token_id) in stop_ids:
-            stop = idx
+            stop = 1 if idx == 0 else idx
             break
     return response_ids[:stop]
 
