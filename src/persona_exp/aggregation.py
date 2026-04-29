@@ -25,6 +25,30 @@ def aggregate_mean_softmax(scores: pd.DataFrame) -> pd.DataFrame:
     return scores.groupby(keys, as_index=False)["score_softmax_T1"].mean()
 
 
+def _sum_group(scores: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
+    return scores.groupby(keys, as_index=False).agg(
+        score_dot=("score_dot", "sum"),
+        num_samples=("prompt_id", "nunique"),
+    )
+
+
+def aggregate_sum_scores(scores: pd.DataFrame) -> pd.DataFrame:
+    keys = [
+        "model_name",
+        "checkpoint_stage",
+        "layer_tag",
+        "layer_idx",
+        "site",
+        "role_id",
+        "role_cluster",
+    ]
+    category_keys = [*keys, "prompt_category"]
+    category_sums = _sum_group(scores, category_keys)
+    all_eval = _sum_group(scores, keys)
+    all_eval["prompt_category"] = "all_eval"
+    return pd.concat([all_eval, category_sums], ignore_index=True)[[*category_keys, "score_dot", "num_samples"]]
+
+
 def aggregate_cluster_mass(scores: pd.DataFrame) -> pd.DataFrame:
     keys = _group_keys(scores, include_role=False)
     return scores.groupby(keys, as_index=False)["score_softmax_T1"].sum().rename(columns={"score_softmax_T1": "cluster_mass"})

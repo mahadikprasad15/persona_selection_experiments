@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from persona_exp.activation_extract import extract_hidden_states_teacher_forced
+from persona_exp.aggregation import aggregate_sum_scores
 from persona_exp.config import load_config, validate_data_files
 from persona_exp.formatting import format_eval_prompt, format_role_prompt
 from persona_exp.generation import trim_generated_ids
@@ -88,6 +89,51 @@ def test_score_schema_metadata_passthrough_keys():
         "prompt_source_metadata_json": "{}",
     }
     assert expected <= set(row)
+
+
+def test_aggregate_sum_scores_direct_all_eval_and_category_sums():
+    import pandas as pd
+
+    rows = []
+    for prompt_id, category, analyst_score, tutor_score in [
+        ("p1", "harmful", 1.0, 10.0),
+        ("p2", "harmful", 2.0, 20.0),
+        ("p3", "neutral", 3.0, 30.0),
+    ]:
+        for role_id, score in [("analyst", analyst_score), ("tutor", tutor_score)]:
+            rows.append(
+                {
+                    "model_name": "smol",
+                    "checkpoint_stage": "sft",
+                    "layer_tag": "L50",
+                    "layer_idx": 50,
+                    "site": "gen_mean_20",
+                    "prompt_id": prompt_id,
+                    "prompt_category": category,
+                    "role_id": role_id,
+                    "role_cluster": "test",
+                    "score_dot": score,
+                }
+            )
+
+    summed = aggregate_sum_scores(pd.DataFrame(rows))
+
+    all_analyst = summed[
+        (summed["prompt_category"] == "all_eval") & (summed["role_id"] == "analyst")
+    ].iloc[0]
+    harmful_tutor = summed[
+        (summed["prompt_category"] == "harmful") & (summed["role_id"] == "tutor")
+    ].iloc[0]
+    neutral_analyst = summed[
+        (summed["prompt_category"] == "neutral") & (summed["role_id"] == "analyst")
+    ].iloc[0]
+
+    assert all_analyst["score_dot"] == 6.0
+    assert all_analyst["num_samples"] == 3
+    assert harmful_tutor["score_dot"] == 30.0
+    assert harmful_tutor["num_samples"] == 2
+    assert neutral_analyst["score_dot"] == 3.0
+    assert neutral_analyst["num_samples"] == 1
 
 
 def test_trim_generated_ids_removes_eos_and_padding_tail():

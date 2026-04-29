@@ -178,6 +178,39 @@ def _plot_role_bars(
     return count
 
 
+def _plot_sum_role_bars(
+    df: pd.DataFrame,
+    figures,
+    value_col: str,
+    file_prefix: str,
+    ylabel: str,
+    title_prefix: str,
+) -> int:
+    group_cols = [c for c in ["model_name", "layer_tag", "site"] if c in df.columns]
+    count = 0
+    for group_values, group in df.groupby(group_cols):
+        if not isinstance(group_values, tuple):
+            group_values = (group_values,)
+        parts = dict(zip(group_cols, group_values))
+        label = "_".join(str(parts[c]) for c in group_cols)
+        title_bits = ", ".join(f"{c}={parts[c]}" for c in group_cols)
+
+        for category, category_group in group.groupby("prompt_category"):
+            category_df = category_group.groupby("role_id", as_index=False)[value_col].sum()
+            category_label = "all_eval" if category == "all_eval" else f"category={category}"
+            title_category = "all eval samples" if category == "all_eval" else f"category={category}"
+            _save_role_bar(
+                category_df,
+                figures / f"{file_prefix}_{category_label}_{label}.png",
+                f"{title_prefix}, {title_category}: {title_bits}",
+                value_col,
+                ylabel,
+                center_zero=True,
+            )
+            count += 1
+    return count
+
+
 def _plot_role_delta_bars(
     df: pd.DataFrame,
     figures,
@@ -223,6 +256,50 @@ def _plot_role_delta_bars(
                 category_df,
                 figures / f"{file_prefix}_category={category}_{layer}_{site}_sft_minus_base.png",
                 f"{title_prefix}, category={category}: layer={layer}, site={site}",
+                "sft_minus_base",
+                ylabel,
+                center_zero=True,
+            )
+            count += 1
+    return count
+
+
+def _plot_sum_role_delta_bars(
+    df: pd.DataFrame,
+    figures,
+    value_col: str,
+    file_prefix: str,
+    ylabel: str,
+    title_prefix: str,
+) -> int:
+    index_cols = [
+        c
+        for c in ["layer_tag", "site", "prompt_category", "role_id"]
+        if c in df.columns
+    ]
+    pivot = (
+        df.pivot_table(
+            index=index_cols,
+            columns="checkpoint_stage",
+            values=value_col,
+            aggfunc="sum",
+        )
+        .reset_index()
+        .rename_axis(None, axis=1)
+    )
+    if "base" not in pivot.columns or "sft" not in pivot.columns:
+        return 0
+    pivot["sft_minus_base"] = pivot["sft"] - pivot["base"]
+    count = 0
+    for (layer, site), group in pivot.groupby(["layer_tag", "site"]):
+        for category, category_group in group.groupby("prompt_category"):
+            category_df = category_group.groupby("role_id", as_index=False)["sft_minus_base"].sum()
+            category_label = "all_eval" if category == "all_eval" else f"category={category}"
+            title_category = "all eval samples" if category == "all_eval" else f"category={category}"
+            _save_role_bar(
+                category_df,
+                figures / f"{file_prefix}_{category_label}_{layer}_{site}_sft_minus_base.png",
+                f"{title_prefix}, {title_category}: layer={layer}, site={site}",
                 "sft_minus_base",
                 ylabel,
                 center_zero=True,
@@ -295,6 +372,26 @@ def main() -> None:
             "role_delta_bar_mean_score",
             "SFT - base mean dot score",
             "SFT - base mean dot score by role",
+        )
+
+    sum_scores_path = rd / "aggregates" / "sum_scores.parquet"
+    if sum_scores_path.exists():
+        df = pd.read_parquet(sum_scores_path)
+        figure_counts["sum_scores_role_bars"] = _plot_sum_role_bars(
+            df,
+            figures,
+            "score_dot",
+            "role_bar_sum_score",
+            "summed dot score",
+            "Summed dot score by role",
+        )
+        figure_counts["sum_score_role_delta_bars"] = _plot_sum_role_delta_bars(
+            df,
+            figures,
+            "score_dot",
+            "role_delta_bar_sum_score",
+            "SFT - base summed dot score",
+            "SFT - base summed dot score by role",
         )
 
     mean_softmax_path = rd / "aggregates" / "mean_softmax.parquet"

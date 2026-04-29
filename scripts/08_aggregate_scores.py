@@ -5,7 +5,13 @@ import argparse
 
 import pandas as pd
 
-from persona_exp.aggregation import aggregate_cluster_mass, aggregate_mean_scores, aggregate_mean_softmax, compute_model_deltas
+from persona_exp.aggregation import (
+    aggregate_cluster_mass,
+    aggregate_mean_scores,
+    aggregate_mean_softmax,
+    aggregate_sum_scores,
+    compute_model_deltas,
+)
 from persona_exp.config import load_config, run_dir
 from persona_exp.io import mark_completed, write_status
 
@@ -27,9 +33,11 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     mean_scores = aggregate_mean_scores(scores)
     mean_softmax = aggregate_mean_softmax(scores)
+    sum_scores = aggregate_sum_scores(scores)
     cluster_mass = aggregate_cluster_mass(scores)
     mean_scores.to_parquet(out / "mean_scores.parquet", index=False)
     mean_softmax.to_parquet(out / "mean_softmax.parquet", index=False)
+    sum_scores.to_parquet(out / "sum_scores.parquet", index=False)
     cluster_mass.to_parquet(out / "cluster_mass.parquet", index=False)
     compute_model_deltas(cluster_mass, "cluster_mass").to_parquet(out / "model_deltas.parquet", index=False)
     mark_completed(out, {"num_score_rows": len(scores)})
@@ -38,4 +46,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
