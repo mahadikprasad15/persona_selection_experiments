@@ -73,6 +73,42 @@ def _plot_category_cluster_heatmaps(
     return count
 
 
+def _plot_category_role_heatmaps(
+    df: pd.DataFrame,
+    figures,
+    value_col: str,
+    file_prefix: str,
+    colorbar_label: str,
+    title_prefix: str,
+    cmap: str = "viridis",
+    center_zero: bool = False,
+) -> int:
+    group_cols = [c for c in ["model_name", "layer_tag", "site"] if c in df.columns]
+    count = 0
+    for group_values, group in df.groupby(group_cols):
+        if not isinstance(group_values, tuple):
+            group_values = (group_values,)
+        parts = dict(zip(group_cols, group_values))
+        pivot = group.pivot_table(
+            index="prompt_category",
+            columns="role_id",
+            values=value_col,
+            aggfunc="mean",
+        )
+        label = "_".join(str(parts[c]) for c in group_cols)
+        title_bits = ", ".join(f"{c}={parts[c]}" for c in group_cols)
+        _save_heatmap(
+            pivot,
+            figures / f"{file_prefix}_{label}.png",
+            f"{title_prefix}: {title_bits}",
+            colorbar_label,
+            cmap=cmap,
+            center_zero=center_zero,
+        )
+        count += 1
+    return count
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
@@ -101,7 +137,7 @@ def main() -> None:
     mean_scores_path = rd / "aggregates" / "mean_scores.parquet"
     if mean_scores_path.exists():
         df = pd.read_parquet(mean_scores_path)
-        figure_counts["mean_scores"] = _plot_category_cluster_heatmaps(
+        figure_counts["mean_scores_by_cluster"] = _plot_category_cluster_heatmaps(
             df,
             figures,
             "score_dot",
@@ -111,17 +147,35 @@ def main() -> None:
             cmap="coolwarm",
             center_zero=True,
         )
+        figure_counts["mean_scores_by_role"] = _plot_category_role_heatmaps(
+            df,
+            figures,
+            "score_dot",
+            "mean_score_by_role",
+            "mean dot score",
+            "Mean dot score by role",
+            cmap="coolwarm",
+            center_zero=True,
+        )
 
     mean_softmax_path = rd / "aggregates" / "mean_softmax.parquet"
     if mean_softmax_path.exists():
         df = pd.read_parquet(mean_softmax_path)
-        figure_counts["mean_softmax"] = _plot_category_cluster_heatmaps(
+        figure_counts["mean_softmax_by_cluster"] = _plot_category_cluster_heatmaps(
             df,
             figures,
             "score_softmax_T1",
             "mean_softmax_by_cluster",
             "mean role softmax",
             "Mean role softmax by role cluster",
+        )
+        figure_counts["mean_softmax_by_role"] = _plot_category_role_heatmaps(
+            df,
+            figures,
+            "score_softmax_T1",
+            "mean_softmax_by_role",
+            "mean role softmax",
+            "Mean role softmax by role",
         )
 
     deltas_path = rd / "aggregates" / "model_deltas.parquet"
