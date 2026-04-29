@@ -4,6 +4,7 @@ import numpy as np
 
 from persona_exp.config import load_config, validate_data_files
 from persona_exp.formatting import format_eval_prompt, format_role_prompt
+from persona_exp.generation import trim_generated_ids
 from persona_exp.scoring import score_dot, softmax_scores
 from persona_exp.vector_building import build_all_vector_types
 
@@ -84,3 +85,14 @@ def test_score_schema_metadata_passthrough_keys():
         "prompt_source_metadata_json": "{}",
     }
     assert expected <= set(row)
+
+
+def test_trim_generated_ids_removes_eos_and_padding_tail():
+    import torch
+
+    class Tok:
+        eos_token_id = 2
+        pad_token_id = 0
+
+    assert trim_generated_ids(Tok(), torch.tensor([10, 11, 2, 0, 0])).tolist() == [10, 11]
+    assert trim_generated_ids(Tok(), torch.tensor([10, 11, 12])).tolist() == [10, 11, 12]

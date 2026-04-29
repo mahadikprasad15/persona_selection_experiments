@@ -41,10 +41,12 @@ generation:
     max_new_tokens: 16
     do_sample: false
     temperature: 0.0
+    batch_size: 2
   eval:
     max_new_tokens: 16
     do_sample: false
     temperature: 0.0
+    batch_size: 2
 
 role_vectors:
   vector_types: [raw, question_residualized, question_residualized_centered]

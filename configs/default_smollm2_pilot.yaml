@@ -60,10 +60,12 @@ generation:
     max_new_tokens: 64
     do_sample: false
     temperature: 0.0
+    batch_size: 16
   eval:
     max_new_tokens: 64
     do_sample: false
     temperature: 0.0
+    batch_size: 16
 
 role_vectors:
   vector_types:
