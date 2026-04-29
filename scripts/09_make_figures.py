@@ -10,6 +10,69 @@ from persona_exp.config import load_config, run_dir
 from persona_exp.io import mark_completed, write_status
 
 
+def _save_heatmap(
+    pivot: pd.DataFrame,
+    path,
+    title: str,
+    colorbar_label: str,
+    cmap: str = "viridis",
+    center_zero: bool = False,
+) -> None:
+    if pivot.empty:
+        return
+    values = pivot.fillna(0).values
+    kwargs = {"aspect": "auto", "cmap": cmap}
+    if center_zero:
+        vmax = abs(values).max()
+        if vmax > 0:
+            kwargs.update({"vmin": -vmax, "vmax": vmax})
+    plt.figure(figsize=(max(7, len(pivot.columns) * 0.75), max(4, len(pivot.index) * 0.55)))
+    plt.imshow(values, **kwargs)
+    plt.title(title)
+    plt.xticks(range(len(pivot.columns)), pivot.columns, rotation=45, ha="right")
+    plt.yticks(range(len(pivot.index)), pivot.index)
+    plt.colorbar(label=colorbar_label)
+    plt.tight_layout()
+    plt.savefig(path, dpi=160)
+    plt.close()
+
+
+def _plot_category_cluster_heatmaps(
+    df: pd.DataFrame,
+    figures,
+    value_col: str,
+    file_prefix: str,
+    colorbar_label: str,
+    title_prefix: str,
+    cmap: str = "viridis",
+    center_zero: bool = False,
+) -> int:
+    group_cols = [c for c in ["model_name", "layer_tag", "site", "delta"] if c in df.columns]
+    count = 0
+    for group_values, group in df.groupby(group_cols):
+        if not isinstance(group_values, tuple):
+            group_values = (group_values,)
+        parts = dict(zip(group_cols, group_values))
+        pivot = group.pivot_table(
+            index="prompt_category",
+            columns="role_cluster",
+            values=value_col,
+            aggfunc="mean",
+        )
+        label = "_".join(str(parts[c]) for c in group_cols)
+        title_bits = ", ".join(f"{c}={parts[c]}" for c in group_cols)
+        _save_heatmap(
+            pivot,
+            figures / f"{file_prefix}_{label}.png",
+            f"{title_prefix}: {title_bits}",
+            colorbar_label,
+            cmap=cmap,
+            center_zero=center_zero,
+        )
+        count += 1
+    return count
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
@@ -21,23 +84,67 @@ def main() -> None:
     reports = rd / "reports"
     figures.mkdir(parents=True, exist_ok=True)
     reports.mkdir(parents=True, exist_ok=True)
+    figure_counts = {}
+
     cluster_path = rd / "aggregates" / "cluster_mass.parquet"
     if cluster_path.exists():
         df = pd.read_parquet(cluster_path)
-        for (layer, site), group in df.groupby(["layer_tag", "site"]):
-            pivot = group.pivot_table(index="prompt_category", columns="role_cluster", values="cluster_mass", aggfunc="mean")
-            plt.figure(figsize=(max(6, len(pivot.columns) * 0.7), max(4, len(pivot.index) * 0.5)))
-            plt.imshow(pivot.fillna(0).values, aspect="auto")
-            plt.xticks(range(len(pivot.columns)), pivot.columns, rotation=45, ha="right")
-            plt.yticks(range(len(pivot.index)), pivot.index)
-            plt.colorbar(label="cluster mass")
-            plt.tight_layout()
-            plt.savefig(figures / f"cluster_mass_{layer}_{site}.png", dpi=160)
-            plt.close()
+        figure_counts["cluster_mass"] = _plot_category_cluster_heatmaps(
+            df,
+            figures,
+            "cluster_mass",
+            "cluster_mass",
+            "cluster mass",
+            "Cluster mass",
+        )
+
+    mean_scores_path = rd / "aggregates" / "mean_scores.parquet"
+    if mean_scores_path.exists():
+        df = pd.read_parquet(mean_scores_path)
+        figure_counts["mean_scores"] = _plot_category_cluster_heatmaps(
+            df,
+            figures,
+            "score_dot",
+            "mean_score_by_cluster",
+            "mean dot score",
+            "Mean dot score by role cluster",
+            cmap="coolwarm",
+            center_zero=True,
+        )
+
+    mean_softmax_path = rd / "aggregates" / "mean_softmax.parquet"
+    if mean_softmax_path.exists():
+        df = pd.read_parquet(mean_softmax_path)
+        figure_counts["mean_softmax"] = _plot_category_cluster_heatmaps(
+            df,
+            figures,
+            "score_softmax_T1",
+            "mean_softmax_by_cluster",
+            "mean role softmax",
+            "Mean role softmax by role cluster",
+        )
+
+    deltas_path = rd / "aggregates" / "model_deltas.parquet"
+    if deltas_path.exists():
+        df = pd.read_parquet(deltas_path)
+        figure_counts["model_deltas"] = _plot_category_cluster_heatmaps(
+            df,
+            figures,
+            "cluster_mass",
+            "model_delta_cluster_mass",
+            "cluster mass delta",
+            "Model delta in cluster mass",
+            cmap="coolwarm",
+            center_zero=True,
+        )
+
+    counts_text = "\n".join(f"- {name}: {count}" for name, count in sorted(figure_counts.items()))
     summary = reports / "summary.md"
     summary.write_text(
         "# Persona Selection Experiment Summary\n\n"
         "Generated by `scripts/09_make_figures.py`.\n\n"
+        "Figure counts:\n"
+        f"{counts_text}\n\n"
         "Interpret scores as prototype-induced persona-evidence profiles, not literal internal persona probabilities.\n",
         encoding="utf-8",
     )
@@ -47,4 +154,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
