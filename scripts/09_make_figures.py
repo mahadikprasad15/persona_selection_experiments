@@ -34,6 +34,15 @@ CATEGORY_ORDER = [
 ]
 
 
+def _base_comparison_stages(stages: list[str]) -> list[tuple[str, str, str]]:
+    unique = set(stages)
+    if "base" not in unique:
+        return []
+    preferred = [stage for stage in ["sft", "instruct"] if stage in unique]
+    extras = sorted(stage for stage in unique if stage not in {"base", "sft", "instruct"})
+    return [("base", stage, f"{stage}_minus_base") for stage in [*preferred, *extras]]
+
+
 def _load_scores(rd: Path) -> pd.DataFrame:
     paths = sorted((rd / "scores").glob("model=*/vector_set=*/site=*/layer=*/scores.parquet"))
     if not paths:
@@ -117,30 +126,41 @@ def _paired_delta_by_prompt(scores: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
         .rename_axis(None, axis=1)
     )
-    if "base" not in pivot.columns or "sft" not in pivot.columns:
+    comparisons = _base_comparison_stages([str(stage) for stage in scores["checkpoint_stage"].dropna().unique()])
+    if not comparisons:
         return pd.DataFrame()
-    pivot = pivot.dropna(subset=["base", "sft"]).copy()
-    pivot["sft_minus_base"] = pivot["sft"] - pivot["base"]
-    return pivot
+    rows = []
+    for base_stage, post_stage, delta_name in comparisons:
+        delta = pivot.dropna(subset=[base_stage, post_stage]).copy()
+        if delta.empty:
+            continue
+        delta["base_stage"] = base_stage
+        delta["post_stage"] = post_stage
+        delta["delta"] = delta_name
+        delta["paired_delta"] = delta[post_stage] - delta[base_stage]
+        rows.append(delta)
+    if not rows:
+        return pd.DataFrame()
+    return pd.concat(rows, ignore_index=True)
 
 
 def _summarize_paired_delta(delta: pd.DataFrame, n_boot: int = 1000) -> pd.DataFrame:
-    keys = ["layer_tag", "site", "prompt_category", "role_id"]
+    keys = ["delta", "base_stage", "post_stage", "layer_tag", "site", "prompt_category", "role_id"]
     rows = []
     for key_values, group in delta.groupby(keys):
         rec = dict(zip(keys, key_values))
-        rec["mean_delta"] = group["sft_minus_base"].mean()
+        rec["mean_delta"] = group["paired_delta"].mean()
         rec["n"] = group["prompt_id"].nunique()
-        rec["ci_low"], rec["ci_high"] = _bootstrap_ci(group["sft_minus_base"], n_boot=n_boot)
+        rec["ci_low"], rec["ci_high"] = _bootstrap_ci(group["paired_delta"], n_boot=n_boot)
         rows.append(rec)
 
-    all_keys = ["layer_tag", "site", "role_id"]
+    all_keys = ["delta", "base_stage", "post_stage", "layer_tag", "site", "role_id"]
     for key_values, group in delta.groupby(all_keys):
         rec = dict(zip(all_keys, key_values))
         rec["prompt_category"] = "all_eval"
-        rec["mean_delta"] = group["sft_minus_base"].mean()
+        rec["mean_delta"] = group["paired_delta"].mean()
         rec["n"] = group["prompt_id"].nunique()
-        rec["ci_low"], rec["ci_high"] = _bootstrap_ci(group["sft_minus_base"], n_boot=n_boot)
+        rec["ci_low"], rec["ci_high"] = _bootstrap_ci(group["paired_delta"], n_boot=n_boot)
         rows.append(rec)
     return pd.DataFrame(rows)
 
@@ -345,7 +365,7 @@ def _save_delta_heatmap(
     plt.title(title)
     plt.xticks(range(len(pivot.columns)), pivot.columns, rotation=45, ha="right")
     plt.yticks(range(len(pivot.index)), pivot.index, fontsize=7)
-    plt.colorbar(label="mean paired SFT - base dot score")
+    plt.colorbar(label="mean paired post - base dot score")
     plt.tight_layout()
     plt.savefig(path, dpi=180)
     plt.close()
@@ -353,11 +373,11 @@ def _save_delta_heatmap(
 
 def _plot_paired_delta_heatmaps(delta_summary: pd.DataFrame, figures) -> int:
     count = 0
-    for (layer, site), group in delta_summary.groupby(["layer_tag", "site"]):
+    for (delta_name, layer, site), group in delta_summary.groupby(["delta", "layer_tag", "site"]):
         _save_delta_heatmap(
             group,
-            figures / f"paired_delta_heatmap_mean_score_{layer}_{site}_sft_minus_base.png",
-            f"Paired SFT - base mean dot score by role/category: layer={layer}, site={site}",
+            figures / f"paired_delta_heatmap_mean_score_{layer}_{site}_{delta_name}.png",
+            f"Paired {delta_name} mean dot score by role/category: layer={layer}, site={site}",
         )
         count += 1
     return count
@@ -365,21 +385,23 @@ def _plot_paired_delta_heatmaps(delta_summary: pd.DataFrame, figures) -> int:
 
 def _plot_paired_delta_bars(delta_summary: pd.DataFrame, figures) -> int:
     count = 0
-    for (layer, site, category), group in delta_summary.groupby(["layer_tag", "site", "prompt_category"]):
+    for (delta_name, layer, site, category), group in delta_summary.groupby(
+        ["delta", "layer_tag", "site", "prompt_category"]
+    ):
         category_label = "all_eval" if category == "all_eval" else f"category={category}"
         _save_role_bar_with_ci(
             group,
-            figures / f"paired_delta_bar_mean_score_{category_label}_{layer}_{site}_sft_minus_base.png",
-            f"Paired SFT - base mean dot score by role: category={category}, layer={layer}, site={site}",
+            figures / f"paired_delta_bar_mean_score_{category_label}_{layer}_{site}_{delta_name}.png",
+            f"Paired {delta_name} mean dot score by role: category={category}, layer={layer}, site={site}",
             "mean_delta",
-            "paired SFT - base mean dot score",
+            "paired post - base mean dot score",
             center_zero=True,
         )
         count += 1
     return count
 
 
-def _plot_base_sft_scatter(scores: pd.DataFrame, figures) -> int:
+def _plot_base_post_scatter(scores: pd.DataFrame, figures) -> int:
     keys = ["layer_tag", "site", "prompt_category", "role_id", "checkpoint_stage"]
     mean = scores.groupby(keys, as_index=False)["score_dot"].mean()
     all_eval = scores.groupby(["layer_tag", "site", "role_id", "checkpoint_stage"], as_index=False)[
@@ -397,31 +419,40 @@ def _plot_base_sft_scatter(scores: pd.DataFrame, figures) -> int:
         .reset_index()
         .rename_axis(None, axis=1)
     )
-    if "base" not in pivot.columns or "sft" not in pivot.columns:
+    comparisons = _base_comparison_stages([str(stage) for stage in scores["checkpoint_stage"].dropna().unique()])
+    if not comparisons:
         return 0
     count = 0
-    for (layer, site, category), group in pivot.dropna(subset=["base", "sft"]).groupby(
-        ["layer_tag", "site", "prompt_category"]
-    ):
-        lim = float(np.nanmax(np.abs(group[["base", "sft"]].to_numpy())))
-        if not np.isfinite(lim) or lim == 0:
-            lim = 1.0
-        plt.figure(figsize=(6.2, 6.0))
-        plt.scatter(group["base"], group["sft"], s=22, color="#4c78a8", alpha=0.85)
-        plt.plot([-lim, lim], [-lim, lim], color="black", linewidth=0.8)
-        for _, row in group.iterrows():
-            if abs(row["sft"] - row["base"]) >= group.eval("abs(sft - base)").quantile(0.85):
-                plt.text(row["base"], row["sft"], row["role_id"], fontsize=7)
-        plt.xlim(-lim * 1.08, lim * 1.08)
-        plt.ylim(-lim * 1.08, lim * 1.08)
-        plt.xlabel("base mean dot score")
-        plt.ylabel("SFT mean dot score")
-        plt.title(f"Base vs SFT role scores: category={category}, layer={layer}, site={site}")
-        plt.tight_layout()
-        category_label = "all_eval" if category == "all_eval" else f"category={category}"
-        plt.savefig(figures / f"base_sft_scatter_mean_score_{category_label}_{layer}_{site}.png", dpi=180)
-        plt.close()
-        count += 1
+    for base_stage, post_stage, delta_name in comparisons:
+        for (layer, site, category), group in pivot.dropna(subset=[base_stage, post_stage]).groupby(
+            ["layer_tag", "site", "prompt_category"]
+        ):
+            lim = float(np.nanmax(np.abs(group[[base_stage, post_stage]].to_numpy())))
+            if not np.isfinite(lim) or lim == 0:
+                lim = 1.0
+            plt.figure(figsize=(6.2, 6.0))
+            plt.scatter(group[base_stage], group[post_stage], s=22, color="#4c78a8", alpha=0.85)
+            plt.plot([-lim, lim], [-lim, lim], color="black", linewidth=0.8)
+            diffs = (group[post_stage] - group[base_stage]).abs()
+            threshold = diffs.quantile(0.85)
+            for idx, row in group.iterrows():
+                if diffs.loc[idx] >= threshold:
+                    plt.text(row[base_stage], row[post_stage], row["role_id"], fontsize=7)
+            plt.xlim(-lim * 1.08, lim * 1.08)
+            plt.ylim(-lim * 1.08, lim * 1.08)
+            plt.xlabel(f"{base_stage} mean dot score")
+            plt.ylabel(f"{post_stage} mean dot score")
+            plt.title(
+                f"{base_stage} vs {post_stage} role scores: category={category}, layer={layer}, site={site}"
+            )
+            plt.tight_layout()
+            category_label = "all_eval" if category == "all_eval" else f"category={category}"
+            plt.savefig(
+                figures / f"base_post_scatter_mean_score_{category_label}_{layer}_{site}_{delta_name}.png",
+                dpi=180,
+            )
+            plt.close()
+            count += 1
     return count
 
 
@@ -436,15 +467,18 @@ def _write_rank_correlations(scores: pd.DataFrame, reports) -> int:
     rows = []
     for (layer, site, category), group in mean.groupby(["layer_tag", "site", "prompt_category"]):
         pivot = group.pivot_table(index="role_id", columns="checkpoint_stage", values="score_dot")
-        if {"base", "sft"} <= set(pivot.columns):
+        for base_stage, post_stage, delta_name in _base_comparison_stages(
+            [str(stage) for stage in mean["checkpoint_stage"].dropna().unique()]
+        ):
             rows.append(
                 {
-                    "comparison": "base_vs_sft",
+                    "comparison": f"{base_stage}_vs_{post_stage}",
+                    "delta": delta_name,
                     "layer_tag": layer,
                     "site": site,
                     "prompt_category": category,
-                    "spearman": pivot["base"].corr(pivot["sft"], method="spearman"),
-                    "num_roles": len(pivot.dropna(subset=["base", "sft"])),
+                    "spearman": pivot[base_stage].corr(pivot[post_stage], method="spearman"),
+                    "num_roles": len(pivot.dropna(subset=[base_stage, post_stage])),
                 }
             )
     for (layer, category, stage), group in mean.groupby(["layer_tag", "prompt_category", "checkpoint_stage"]):
@@ -479,20 +513,22 @@ def _plot_key_role_distributions(delta: pd.DataFrame, figures, key_roles: list[s
     if data.empty:
         return 0
     count = 0
-    for (layer, site, category), group in data.groupby(["layer_tag", "site", "prompt_category"]):
+    for (delta_name, layer, site, category), group in data.groupby(["delta", "layer_tag", "site", "prompt_category"]):
         role_order = [role for role in roles if role in set(group["role_id"])]
-        values = [group.loc[group["role_id"] == role, "sft_minus_base"].dropna().to_numpy() for role in role_order]
+        values = [group.loc[group["role_id"] == role, "paired_delta"].dropna().to_numpy() for role in role_order]
         if not values:
             continue
         plt.figure(figsize=(max(8, len(role_order) * 0.65), 5.4))
         plt.violinplot(values, showmeans=True, showextrema=True)
         plt.axhline(0, color="black", linewidth=0.8)
         plt.xticks(range(1, len(role_order) + 1), role_order, rotation=45, ha="right")
-        plt.ylabel("per-prompt paired SFT - base dot score")
-        plt.title(f"Key role paired delta distributions: category={category}, layer={layer}, site={site}")
+        plt.ylabel("per-prompt paired post - base dot score")
+        plt.title(
+            f"Key role paired delta distributions: delta={delta_name}, category={category}, layer={layer}, site={site}"
+        )
         plt.tight_layout()
         category_label = "all_eval" if category == "all_eval" else f"category={category}"
-        plt.savefig(figures / f"key_role_delta_distribution_{category_label}_{layer}_{site}.png", dpi=180)
+        plt.savefig(figures / f"key_role_delta_distribution_{category_label}_{layer}_{site}_{delta_name}.png", dpi=180)
         plt.close()
         count += 1
     return count
@@ -564,33 +600,35 @@ def _plot_role_delta_bars(
         .reset_index()
         .rename_axis(None, axis=1)
     )
-    if "base" not in pivot.columns or "sft" not in pivot.columns:
+    comparisons = _base_comparison_stages([str(stage) for stage in df["checkpoint_stage"].dropna().unique()])
+    if not comparisons:
         return 0
-    pivot["sft_minus_base"] = pivot["sft"] - pivot["base"]
     count = 0
-    for (layer, site), group in pivot.groupby(["layer_tag", "site"]):
-        all_eval = group.groupby("role_id", as_index=False)["sft_minus_base"].mean()
-        _save_role_bar(
-            all_eval,
-            figures / f"{file_prefix}_all_eval_{layer}_{site}_sft_minus_base.png",
-            f"{title_prefix}, all eval categories: layer={layer}, site={site}",
-            "sft_minus_base",
-            ylabel,
-            center_zero=True,
-        )
-        count += 1
-
-        for category, category_group in group.groupby("prompt_category"):
-            category_df = category_group.groupby("role_id", as_index=False)["sft_minus_base"].mean()
+    for base_stage, post_stage, delta_name in comparisons:
+        pivot[delta_name] = pivot[post_stage] - pivot[base_stage]
+        for (layer, site), group in pivot.groupby(["layer_tag", "site"]):
+            all_eval = group.groupby("role_id", as_index=False)[delta_name].mean()
             _save_role_bar(
-                category_df,
-                figures / f"{file_prefix}_category={category}_{layer}_{site}_sft_minus_base.png",
-                f"{title_prefix}, category={category}: layer={layer}, site={site}",
-                "sft_minus_base",
+                all_eval,
+                figures / f"{file_prefix}_all_eval_{layer}_{site}_{delta_name}.png",
+                f"{title_prefix}, all eval categories: delta={delta_name}, layer={layer}, site={site}",
+                delta_name,
                 ylabel,
                 center_zero=True,
             )
             count += 1
+
+            for category, category_group in group.groupby("prompt_category"):
+                category_df = category_group.groupby("role_id", as_index=False)[delta_name].mean()
+                _save_role_bar(
+                    category_df,
+                    figures / f"{file_prefix}_category={category}_{layer}_{site}_{delta_name}.png",
+                    f"{title_prefix}, category={category}, delta={delta_name}: layer={layer}, site={site}",
+                    delta_name,
+                    ylabel,
+                    center_zero=True,
+                )
+                count += 1
     return count
 
 
@@ -617,9 +655,9 @@ def main() -> None:
 
         paired_delta = _paired_delta_by_prompt(scores)
         if not paired_delta.empty:
-            paired_delta.to_parquet(reports / "paired_sft_base_score_deltas.parquet", index=False)
+            paired_delta.to_parquet(reports / "paired_post_base_score_deltas.parquet", index=False)
             delta_summary = _summarize_paired_delta(paired_delta, n_boot=args.bootstrap_samples)
-            delta_summary.to_parquet(reports / "paired_sft_base_score_delta_summary.parquet", index=False)
+            delta_summary.to_parquet(reports / "paired_post_base_score_delta_summary.parquet", index=False)
             figure_counts["paired_delta_heatmaps"] = _plot_paired_delta_heatmaps(delta_summary, figures)
             figure_counts["paired_delta_bars"] = _plot_paired_delta_bars(delta_summary, figures)
             figure_counts["key_role_delta_distributions"] = _plot_key_role_distributions(
@@ -627,7 +665,7 @@ def main() -> None:
                 figures,
             )
 
-        figure_counts["base_sft_scatter"] = _plot_base_sft_scatter(scores, figures)
+        figure_counts["base_post_scatter"] = _plot_base_post_scatter(scores, figures)
         figure_counts["rank_correlation_rows"] = _write_rank_correlations(scores, reports)
 
     cluster_path = rd / "aggregates" / "cluster_mass.parquet"
@@ -679,8 +717,8 @@ def main() -> None:
             figures,
             "score_dot",
             "role_delta_bar_mean_score",
-            "SFT - base mean dot score",
-            "SFT - base mean dot score by role",
+            "post - base mean dot score",
+            "post - base mean dot score by role",
         )
 
     mean_softmax_path = rd / "aggregates" / "mean_softmax.parquet"
@@ -715,8 +753,8 @@ def main() -> None:
             figures,
             "score_softmax_T1",
             "role_delta_bar_mean_softmax",
-            "SFT - base mean role softmax",
-            "SFT - base mean role softmax by role",
+            "post - base mean role softmax",
+            "post - base mean role softmax by role",
         )
 
     deltas_path = rd / "aggregates" / "model_deltas.parquet"
@@ -741,7 +779,7 @@ def main() -> None:
         "Figure counts:\n"
         f"{counts_text}\n\n"
         "This report intentionally omits summed dot-score role bars. Prefer per-sample means, "
-        "paired prompt-level SFT-base deltas, confidence intervals, and rank/stability diagnostics.\n\n"
+        "paired prompt-level post-base deltas, confidence intervals, and rank/stability diagnostics.\n\n"
         "Interpret scores as prototype-induced persona-evidence profiles, not literal internal persona probabilities.\n",
         encoding="utf-8",
     )
