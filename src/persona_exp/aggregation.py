@@ -15,24 +15,24 @@ def _group_keys(scores: pd.DataFrame, include_role: bool = True) -> list[str]:
     return keys
 
 
-def aggregate_mean_scores(scores: pd.DataFrame) -> pd.DataFrame:
+def aggregate_mean_scores(scores: pd.DataFrame, score_col: str = "score_dot") -> pd.DataFrame:
     keys = _group_keys(scores, include_role=True)
-    return scores.groupby(keys, as_index=False)["score_dot"].mean()
+    return scores.groupby(keys, as_index=False)[score_col].mean().rename(columns={score_col: "score"})
 
 
-def aggregate_mean_softmax(scores: pd.DataFrame) -> pd.DataFrame:
+def aggregate_mean_softmax(scores: pd.DataFrame, softmax_col: str = "score_dot_softmax_T1") -> pd.DataFrame:
     keys = _group_keys(scores, include_role=True)
-    return scores.groupby(keys, as_index=False)["score_softmax_T1"].mean()
+    return scores.groupby(keys, as_index=False)[softmax_col].mean().rename(columns={softmax_col: "score_softmax"})
 
 
-def _sum_group(scores: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
+def _sum_group(scores: pd.DataFrame, keys: list[str], score_col: str) -> pd.DataFrame:
     return scores.groupby(keys, as_index=False).agg(
-        score_dot=("score_dot", "sum"),
+        score=(score_col, "sum"),
         num_samples=("prompt_id", "nunique"),
     )
 
 
-def aggregate_sum_scores(scores: pd.DataFrame) -> pd.DataFrame:
+def aggregate_sum_scores(scores: pd.DataFrame, score_col: str = "score_dot") -> pd.DataFrame:
     keys = [
         "model_name",
         "checkpoint_stage",
@@ -43,15 +43,18 @@ def aggregate_sum_scores(scores: pd.DataFrame) -> pd.DataFrame:
         "role_cluster",
     ]
     category_keys = [*keys, "prompt_category"]
-    category_sums = _sum_group(scores, category_keys)
-    all_eval = _sum_group(scores, keys)
+    category_sums = _sum_group(scores, category_keys, score_col)
+    all_eval = _sum_group(scores, keys, score_col)
     all_eval["prompt_category"] = "all_eval"
-    return pd.concat([all_eval, category_sums], ignore_index=True)[[*category_keys, "score_dot", "num_samples"]]
+    out = pd.concat([all_eval, category_sums], ignore_index=True)[[*category_keys, "score", "num_samples"]]
+    if score_col == "score_dot":
+        out["score_dot"] = out["score"]
+    return out
 
 
-def aggregate_cluster_mass(scores: pd.DataFrame) -> pd.DataFrame:
+def aggregate_cluster_mass(scores: pd.DataFrame, softmax_col: str = "score_dot_softmax_T1") -> pd.DataFrame:
     keys = _group_keys(scores, include_role=False)
-    return scores.groupby(keys, as_index=False)["score_softmax_T1"].sum().rename(columns={"score_softmax_T1": "cluster_mass"})
+    return scores.groupby(keys, as_index=False)[softmax_col].sum().rename(columns={softmax_col: "cluster_mass"})
 
 
 def compute_model_deltas(agg: pd.DataFrame, value_col: str) -> pd.DataFrame:

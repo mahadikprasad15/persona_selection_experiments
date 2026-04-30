@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -31,6 +32,11 @@ CATEGORY_ORDER = [
     "deception",
     "sycophancy",
     "vulnerable_user",
+]
+SCORE_VARIANTS = [
+    ("dot", "score_dot", "dot score"),
+    ("cosine", "score_cosine", "cosine score"),
+    ("whitened_dot", "score_whitened_dot", "whitened dot score"),
 ]
 
 
@@ -83,28 +89,28 @@ def _bootstrap_ci(values: pd.Series, n_boot: int = 1000, seed: int = 0) -> tuple
     return float(lo), float(hi)
 
 
-def _mean_ci_by_role(scores: pd.DataFrame, n_boot: int = 1000) -> pd.DataFrame:
+def _mean_ci_by_role(scores: pd.DataFrame, score_col: str, n_boot: int = 1000) -> pd.DataFrame:
     keys = ["model_name", "checkpoint_stage", "layer_tag", "site", "prompt_category", "role_id"]
     rows = []
     for key_values, group in scores.groupby(keys):
         rec = dict(zip(keys, key_values))
-        rec["mean"] = group["score_dot"].mean()
+        rec["mean"] = group[score_col].mean()
         rec["n"] = group["prompt_id"].nunique()
-        rec["ci_low"], rec["ci_high"] = _bootstrap_ci(group["score_dot"], n_boot=n_boot)
+        rec["ci_low"], rec["ci_high"] = _bootstrap_ci(group[score_col], n_boot=n_boot)
         rows.append(rec)
 
     all_keys = ["model_name", "checkpoint_stage", "layer_tag", "site", "role_id"]
     for key_values, group in scores.groupby(all_keys):
         rec = dict(zip(all_keys, key_values))
         rec["prompt_category"] = "all_eval"
-        rec["mean"] = group["score_dot"].mean()
+        rec["mean"] = group[score_col].mean()
         rec["n"] = group["prompt_id"].nunique()
-        rec["ci_low"], rec["ci_high"] = _bootstrap_ci(group["score_dot"], n_boot=n_boot)
+        rec["ci_low"], rec["ci_high"] = _bootstrap_ci(group[score_col], n_boot=n_boot)
         rows.append(rec)
     return pd.DataFrame(rows)
 
 
-def _paired_delta_by_prompt(scores: pd.DataFrame) -> pd.DataFrame:
+def _paired_delta_by_prompt(scores: pd.DataFrame, score_col: str) -> pd.DataFrame:
     index_cols = [
         "layer_tag",
         "layer_idx",
@@ -120,7 +126,7 @@ def _paired_delta_by_prompt(scores: pd.DataFrame) -> pd.DataFrame:
         scores.pivot_table(
             index=index_cols,
             columns="checkpoint_stage",
-            values="score_dot",
+            values=score_col,
             aggfunc="mean",
         )
         .reset_index()
@@ -321,7 +327,7 @@ def _save_role_bar_with_ci(
     plt.close()
 
 
-def _plot_mean_ci_role_bars(mean_ci: pd.DataFrame, figures) -> int:
+def _plot_mean_ci_role_bars(mean_ci: pd.DataFrame, figures, score_label: str) -> int:
     count = 0
     group_cols = ["model_name", "checkpoint_stage", "layer_tag", "site", "prompt_category"]
     for group_values, group in mean_ci.groupby(group_cols):
@@ -332,10 +338,10 @@ def _plot_mean_ci_role_bars(mean_ci: pd.DataFrame, figures) -> int:
         _save_role_bar_with_ci(
             group,
             figures / f"role_bar_mean_score_ci_{category_label}_{label}.png",
-            "Mean dot score by role with bootstrap CI: "
+            f"Mean {score_label} by role with bootstrap CI: "
             f"category={category}, model={parts['model_name']}, layer={parts['layer_tag']}, site={parts['site']}",
             "mean",
-            "mean dot score",
+            f"mean {score_label}",
             center_zero=True,
         )
         count += 1
@@ -365,7 +371,7 @@ def _save_delta_heatmap(
     plt.title(title)
     plt.xticks(range(len(pivot.columns)), pivot.columns, rotation=45, ha="right")
     plt.yticks(range(len(pivot.index)), pivot.index, fontsize=7)
-    plt.colorbar(label="mean paired post - base dot score")
+    plt.colorbar(label="mean paired post - base score")
     plt.tight_layout()
     plt.savefig(path, dpi=180)
     plt.close()
@@ -377,7 +383,7 @@ def _plot_paired_delta_heatmaps(delta_summary: pd.DataFrame, figures) -> int:
         _save_delta_heatmap(
             group,
             figures / f"paired_delta_heatmap_mean_score_{layer}_{site}_{delta_name}.png",
-            f"Paired {delta_name} mean dot score by role/category: layer={layer}, site={site}",
+            f"Paired {delta_name} mean score by role/category: layer={layer}, site={site}",
         )
         count += 1
     return count
@@ -392,20 +398,20 @@ def _plot_paired_delta_bars(delta_summary: pd.DataFrame, figures) -> int:
         _save_role_bar_with_ci(
             group,
             figures / f"paired_delta_bar_mean_score_{category_label}_{layer}_{site}_{delta_name}.png",
-            f"Paired {delta_name} mean dot score by role: category={category}, layer={layer}, site={site}",
+            f"Paired {delta_name} mean score by role: category={category}, layer={layer}, site={site}",
             "mean_delta",
-            "paired post - base mean dot score",
+            "paired post - base mean score",
             center_zero=True,
         )
         count += 1
     return count
 
 
-def _plot_base_post_scatter(scores: pd.DataFrame, figures) -> int:
+def _plot_base_post_scatter(scores: pd.DataFrame, figures, score_col: str, score_label: str) -> int:
     keys = ["layer_tag", "site", "prompt_category", "role_id", "checkpoint_stage"]
-    mean = scores.groupby(keys, as_index=False)["score_dot"].mean()
+    mean = scores.groupby(keys, as_index=False)[score_col].mean()
     all_eval = scores.groupby(["layer_tag", "site", "role_id", "checkpoint_stage"], as_index=False)[
-        "score_dot"
+        score_col
     ].mean()
     all_eval["prompt_category"] = "all_eval"
     mean = pd.concat([mean, all_eval], ignore_index=True)
@@ -413,7 +419,7 @@ def _plot_base_post_scatter(scores: pd.DataFrame, figures) -> int:
         mean.pivot_table(
             index=["layer_tag", "site", "prompt_category", "role_id"],
             columns="checkpoint_stage",
-            values="score_dot",
+            values=score_col,
             aggfunc="mean",
         )
         .reset_index()
@@ -440,8 +446,8 @@ def _plot_base_post_scatter(scores: pd.DataFrame, figures) -> int:
                     plt.text(row[base_stage], row[post_stage], row["role_id"], fontsize=7)
             plt.xlim(-lim * 1.08, lim * 1.08)
             plt.ylim(-lim * 1.08, lim * 1.08)
-            plt.xlabel(f"{base_stage} mean dot score")
-            plt.ylabel(f"{post_stage} mean dot score")
+            plt.xlabel(f"{base_stage} mean {score_label}")
+            plt.ylabel(f"{post_stage} mean {score_label}")
             plt.title(
                 f"{base_stage} vs {post_stage} role scores: category={category}, layer={layer}, site={site}"
             )
@@ -456,17 +462,17 @@ def _plot_base_post_scatter(scores: pd.DataFrame, figures) -> int:
     return count
 
 
-def _write_rank_correlations(scores: pd.DataFrame, reports) -> int:
+def _write_rank_correlations(scores: pd.DataFrame, reports, score_col: str) -> int:
     keys = ["layer_tag", "site", "prompt_category", "role_id", "checkpoint_stage"]
-    mean = scores.groupby(keys, as_index=False)["score_dot"].mean()
+    mean = scores.groupby(keys, as_index=False)[score_col].mean()
     all_eval = scores.groupby(["layer_tag", "site", "role_id", "checkpoint_stage"], as_index=False)[
-        "score_dot"
+        score_col
     ].mean()
     all_eval["prompt_category"] = "all_eval"
     mean = pd.concat([mean, all_eval], ignore_index=True)
     rows = []
     for (layer, site, category), group in mean.groupby(["layer_tag", "site", "prompt_category"]):
-        pivot = group.pivot_table(index="role_id", columns="checkpoint_stage", values="score_dot")
+        pivot = group.pivot_table(index="role_id", columns="checkpoint_stage", values=score_col)
         for base_stage, post_stage, delta_name in _base_comparison_stages(
             [str(stage) for stage in mean["checkpoint_stage"].dropna().unique()]
         ):
@@ -482,7 +488,7 @@ def _write_rank_correlations(scores: pd.DataFrame, reports) -> int:
                 }
             )
     for (layer, category, stage), group in mean.groupby(["layer_tag", "prompt_category", "checkpoint_stage"]):
-        pivot = group.pivot_table(index="role_id", columns="site", values="score_dot")
+        pivot = group.pivot_table(index="role_id", columns="site", values=score_col)
         if {"assistant_marker_final_token", "gen_mean_20"} <= set(pivot.columns):
             rows.append(
                 {
@@ -522,7 +528,7 @@ def _plot_key_role_distributions(delta: pd.DataFrame, figures, key_roles: list[s
         plt.violinplot(values, showmeans=True, showextrema=True)
         plt.axhline(0, color="black", linewidth=0.8)
         plt.xticks(range(1, len(role_order) + 1), role_order, rotation=45, ha="right")
-        plt.ylabel("per-prompt paired post - base dot score")
+        plt.ylabel("per-prompt paired post - base score")
         plt.title(
             f"Key role paired delta distributions: delta={delta_name}, category={category}, layer={layer}, site={site}"
         )
@@ -632,43 +638,108 @@ def _plot_role_delta_bars(
     return count
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", required=True)
-    parser.add_argument("--bootstrap-samples", type=int, default=1000)
-    args = parser.parse_args()
-    cfg = load_config(args.config)
-    rd = run_dir(cfg)
-    write_status(rd, "running", "figures")
-    figures = rd / "figures"
-    reports = rd / "reports"
+def _plot_score_comparison_heatmaps(score_summaries: dict[str, pd.DataFrame], figures) -> int:
+    figures.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for score_name, summary in score_summaries.items():
+        for _, row in summary.iterrows():
+            rows.append(
+                {
+                    "score_variant": score_name,
+                    "delta": row["delta"],
+                    "layer_tag": row["layer_tag"],
+                    "site": row["site"],
+                    "prompt_category": row["prompt_category"],
+                    "role_id": row["role_id"],
+                    "mean_delta": row["mean_delta"],
+                }
+            )
+    if not rows:
+        return 0
+    df = pd.DataFrame(rows)
+    count = 0
+    for (delta_name, layer, site, category), group in df.groupby(["delta", "layer_tag", "site", "prompt_category"]):
+        pivot = group.pivot_table(index="role_id", columns="score_variant", values="mean_delta", aggfunc="mean")
+        if pivot.empty:
+            continue
+        order = pivot.abs().max(axis=1).sort_values(ascending=False).index
+        pivot = pivot.loc[order]
+        values = pivot.to_numpy(dtype=float)
+        vmax = np.nanmax(np.abs(values))
+        if not np.isfinite(vmax) or vmax == 0:
+            vmax = 1.0
+        plt.figure(figsize=(max(5, len(pivot.columns) * 1.2), max(8, len(pivot.index) * 0.30)))
+        plt.imshow(pivot.fillna(0).values, aspect="auto", cmap="coolwarm", vmin=-vmax, vmax=vmax)
+        plt.title(f"Score variant comparison: {delta_name}, category={category}, layer={layer}, site={site}")
+        plt.xticks(range(len(pivot.columns)), pivot.columns, rotation=45, ha="right")
+        plt.yticks(range(len(pivot.index)), pivot.index, fontsize=7)
+        plt.colorbar(label="mean paired post - base score")
+        plt.tight_layout()
+        category_label = "all_eval" if category == "all_eval" else f"category={category}"
+        plt.savefig(figures / f"score_variant_comparison_{category_label}_{layer}_{site}_{delta_name}.png", dpi=180)
+        plt.close()
+        count += 1
+    return count
+
+
+def _copy_key_plots(score_figures: Path, key_dir: Path, score_name: str) -> int:
+    patterns = [
+        "paired_delta_heatmap_mean_score_*_gen_mean_20_*.png",
+        "paired_delta_heatmap_mean_score_*_assistant_marker_final_token_*.png",
+        "paired_delta_bar_mean_score_all_eval_*_gen_mean_20_*.png",
+        "paired_delta_bar_mean_score_all_eval_*_assistant_marker_final_token_*.png",
+        "base_post_scatter_mean_score_all_eval_*_gen_mean_20_*.png",
+        "key_role_delta_distribution_all_eval_*_gen_mean_20_*.png",
+        "score_variant_comparison_all_eval_*_gen_mean_20_*.png",
+        "score_variant_comparison_all_eval_*_assistant_marker_final_token_*.png",
+    ]
+    count = 0
+    target_root = key_dir / f"score={score_name}"
+    target_root.mkdir(parents=True, exist_ok=True)
+    for pattern in patterns:
+        for path in score_figures.glob(pattern):
+            shutil.copy2(path, target_root / path.name)
+            count += 1
+    return count
+
+
+def _make_score_figures(
+    scores: pd.DataFrame,
+    aggregate_root: Path,
+    figures: Path,
+    reports: Path,
+    score_name: str,
+    score_col: str,
+    score_label: str,
+    bootstrap_samples: int,
+) -> tuple[dict[str, int], pd.DataFrame]:
+    figure_counts: dict[str, int] = {}
     figures.mkdir(parents=True, exist_ok=True)
     reports.mkdir(parents=True, exist_ok=True)
-    figure_counts = {}
-    figure_counts["removed_stale_sum_figures"] = _cleanup_stale_sum_figures(figures)
 
-    scores = _load_scores(rd)
-    if not scores.empty:
-        mean_ci = _mean_ci_by_role(scores, n_boot=args.bootstrap_samples)
+    if not scores.empty and score_col in scores.columns:
+        mean_ci = _mean_ci_by_role(scores, score_col=score_col, n_boot=bootstrap_samples)
         mean_ci.to_parquet(reports / "mean_score_role_ci.parquet", index=False)
-        figure_counts["mean_score_ci_role_bars"] = _plot_mean_ci_role_bars(mean_ci, figures)
+        figure_counts["mean_score_ci_role_bars"] = _plot_mean_ci_role_bars(mean_ci, figures, score_label)
 
-        paired_delta = _paired_delta_by_prompt(scores)
+        paired_delta = _paired_delta_by_prompt(scores, score_col=score_col)
         if not paired_delta.empty:
             paired_delta.to_parquet(reports / "paired_post_base_score_deltas.parquet", index=False)
-            delta_summary = _summarize_paired_delta(paired_delta, n_boot=args.bootstrap_samples)
+            delta_summary = _summarize_paired_delta(paired_delta, n_boot=bootstrap_samples)
             delta_summary.to_parquet(reports / "paired_post_base_score_delta_summary.parquet", index=False)
             figure_counts["paired_delta_heatmaps"] = _plot_paired_delta_heatmaps(delta_summary, figures)
             figure_counts["paired_delta_bars"] = _plot_paired_delta_bars(delta_summary, figures)
-            figure_counts["key_role_delta_distributions"] = _plot_key_role_distributions(
-                paired_delta,
-                figures,
-            )
+            figure_counts["key_role_delta_distributions"] = _plot_key_role_distributions(paired_delta, figures)
+        else:
+            delta_summary = pd.DataFrame()
 
-        figure_counts["base_post_scatter"] = _plot_base_post_scatter(scores, figures)
-        figure_counts["rank_correlation_rows"] = _write_rank_correlations(scores, reports)
+        figure_counts["base_post_scatter"] = _plot_base_post_scatter(scores, figures, score_col, score_label)
+        figure_counts["rank_correlation_rows"] = _write_rank_correlations(scores, reports, score_col)
+    else:
+        delta_summary = pd.DataFrame()
 
-    cluster_path = rd / "aggregates" / "cluster_mass.parquet"
+    aggregate_dir = aggregate_root / f"score={score_name}"
+    cluster_path = aggregate_dir / "cluster_mass.parquet"
     if cluster_path.exists():
         df = pd.read_parquet(cluster_path)
         figure_counts["cluster_mass"] = _plot_category_cluster_heatmaps(
@@ -680,54 +751,54 @@ def main() -> None:
             "Cluster mass",
         )
 
-    mean_scores_path = rd / "aggregates" / "mean_scores.parquet"
+    mean_scores_path = aggregate_dir / "mean_scores.parquet"
     if mean_scores_path.exists():
         df = pd.read_parquet(mean_scores_path)
         figure_counts["mean_scores_by_cluster"] = _plot_category_cluster_heatmaps(
             df,
             figures,
-            "score_dot",
+            "score",
             "mean_score_by_cluster",
-            "mean dot score",
-            "Mean dot score by role cluster",
+            f"mean {score_label}",
+            "Mean score by role cluster",
             cmap="coolwarm",
             center_zero=True,
         )
         figure_counts["mean_scores_by_role"] = _plot_category_role_heatmaps(
             df,
             figures,
-            "score_dot",
+            "score",
             "mean_score_by_role",
-            "mean dot score",
-            "Mean dot score by role",
+            f"mean {score_label}",
+            "Mean score by role",
             cmap="coolwarm",
             center_zero=True,
         )
         figure_counts["mean_scores_role_bars"] = _plot_role_bars(
             df,
             figures,
-            "score_dot",
+            "score",
             "role_bar_mean_score",
-            "mean dot score",
-            "Mean dot score by role",
+            f"mean {score_label}",
+            "Mean score by role",
             center_zero=True,
         )
         figure_counts["mean_score_role_delta_bars"] = _plot_role_delta_bars(
             df,
             figures,
-            "score_dot",
+            "score",
             "role_delta_bar_mean_score",
-            "post - base mean dot score",
-            "post - base mean dot score by role",
+            "post - base mean score",
+            "post - base mean score by role",
         )
 
-    mean_softmax_path = rd / "aggregates" / "mean_softmax.parquet"
+    mean_softmax_path = aggregate_dir / "mean_softmax.parquet"
     if mean_softmax_path.exists():
         df = pd.read_parquet(mean_softmax_path)
         figure_counts["mean_softmax_by_cluster"] = _plot_category_cluster_heatmaps(
             df,
             figures,
-            "score_softmax_T1",
+            "score_softmax",
             "mean_softmax_by_cluster",
             "mean role softmax",
             "Mean role softmax by role cluster",
@@ -735,7 +806,7 @@ def main() -> None:
         figure_counts["mean_softmax_by_role"] = _plot_category_role_heatmaps(
             df,
             figures,
-            "score_softmax_T1",
+            "score_softmax",
             "mean_softmax_by_role",
             "mean role softmax",
             "Mean role softmax by role",
@@ -743,7 +814,7 @@ def main() -> None:
         figure_counts["mean_softmax_role_bars"] = _plot_role_bars(
             df,
             figures,
-            "score_softmax_T1",
+            "score_softmax",
             "role_bar_mean_softmax",
             "mean role softmax",
             "Mean role softmax by role",
@@ -751,13 +822,13 @@ def main() -> None:
         figure_counts["mean_softmax_role_delta_bars"] = _plot_role_delta_bars(
             df,
             figures,
-            "score_softmax_T1",
+            "score_softmax",
             "role_delta_bar_mean_softmax",
             "post - base mean role softmax",
             "post - base mean role softmax by role",
         )
 
-    deltas_path = rd / "aggregates" / "model_deltas.parquet"
+    deltas_path = aggregate_dir / "model_deltas.parquet"
     if deltas_path.exists():
         df = pd.read_parquet(deltas_path)
         figure_counts["model_deltas"] = _plot_category_cluster_heatmaps(
@@ -771,6 +842,61 @@ def main() -> None:
             center_zero=True,
         )
 
+    return figure_counts, delta_summary
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--bootstrap-samples", type=int, default=1000)
+    args = parser.parse_args()
+    cfg = load_config(args.config)
+    rd = run_dir(cfg)
+    write_status(rd, "running", "figures")
+    figures = rd / "figures"
+    reports = rd / "reports"
+    figures.mkdir(parents=True, exist_ok=True)
+    reports.mkdir(parents=True, exist_ok=True)
+    figure_counts: dict[str, int] = {}
+    score_summaries: dict[str, pd.DataFrame] = {}
+    figure_counts["removed_stale_sum_figures"] = _cleanup_stale_sum_figures(figures)
+    scores = _load_scores(rd)
+    for score_name, score_col, score_label in SCORE_VARIANTS:
+        score_figures = figures / f"score={score_name}"
+        score_reports = reports / f"score={score_name}"
+        counts, delta_summary = _make_score_figures(
+            scores=scores,
+            aggregate_root=rd / "aggregates",
+            figures=score_figures,
+            reports=score_reports,
+            score_name=score_name,
+            score_col=score_col,
+            score_label=score_label,
+            bootstrap_samples=args.bootstrap_samples,
+        )
+        for name, count in counts.items():
+            figure_counts[f"score={score_name}/{name}"] = count
+        if not delta_summary.empty:
+            score_summaries[score_name] = delta_summary
+
+    comparison_dir = figures / "score_comparisons"
+    comparison_dir.mkdir(parents=True, exist_ok=True)
+    figure_counts["score_comparisons"] = _plot_score_comparison_heatmaps(score_summaries, comparison_dir)
+
+    key_dir = figures / "key_plots"
+    key_dir.mkdir(parents=True, exist_ok=True)
+    for score_name, _, _ in SCORE_VARIANTS:
+        figure_counts[f"key_plots/score={score_name}"] = _copy_key_plots(
+            figures / f"score={score_name}",
+            key_dir,
+            score_name,
+        )
+    figure_counts["key_plots/score_comparisons"] = _copy_key_plots(
+        comparison_dir,
+        key_dir,
+        "score_comparisons",
+    )
+
     counts_text = "\n".join(f"- {name}: {count}" for name, count in sorted(figure_counts.items()))
     summary = reports / "summary.md"
     summary.write_text(
@@ -780,6 +906,9 @@ def main() -> None:
         f"{counts_text}\n\n"
         "This report intentionally omits summed dot-score role bars. Prefer per-sample means, "
         "paired prompt-level post-base deltas, confidence intervals, and rank/stability diagnostics.\n\n"
+        "Score-specific figures live under `figures/score=<dot|cosine|whitened_dot>/`; "
+        "cross-score comparison figures live under `figures/score_comparisons/`; "
+        "curated figures live under `figures/key_plots/`.\n\n"
         "Interpret scores as prototype-induced persona-evidence profiles, not literal internal persona probabilities.\n",
         encoding="utf-8",
     )

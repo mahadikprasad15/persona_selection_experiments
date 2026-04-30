@@ -16,6 +16,13 @@ from persona_exp.config import load_config, run_dir
 from persona_exp.io import mark_completed, write_status
 
 
+SCORE_VARIANTS = [
+    ("dot", "score_dot", "score_dot_softmax_T1"),
+    ("cosine", "score_cosine", "score_cosine_softmax_T1"),
+    ("whitened_dot", "score_whitened_dot", "score_whitened_dot_softmax_T1"),
+]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
@@ -31,16 +38,24 @@ def main() -> None:
     scores = pd.concat([pd.read_parquet(p) for p in paths], ignore_index=True)
     out = rd / "aggregates"
     out.mkdir(parents=True, exist_ok=True)
-    mean_scores = aggregate_mean_scores(scores)
-    mean_softmax = aggregate_mean_softmax(scores)
-    sum_scores = aggregate_sum_scores(scores)
-    cluster_mass = aggregate_cluster_mass(scores)
-    mean_scores.to_parquet(out / "mean_scores.parquet", index=False)
-    mean_softmax.to_parquet(out / "mean_softmax.parquet", index=False)
-    sum_scores.to_parquet(out / "sum_scores.parquet", index=False)
-    cluster_mass.to_parquet(out / "cluster_mass.parquet", index=False)
-    compute_model_deltas(cluster_mass, "cluster_mass").to_parquet(out / "model_deltas.parquet", index=False)
-    mark_completed(out, {"num_score_rows": len(scores)})
+    written = {}
+    for score_name, score_col, softmax_col in SCORE_VARIANTS:
+        if score_col not in scores.columns or softmax_col not in scores.columns:
+            continue
+        score_out = out / f"score={score_name}"
+        score_out.mkdir(parents=True, exist_ok=True)
+        mean_scores = aggregate_mean_scores(scores, score_col=score_col)
+        mean_softmax = aggregate_mean_softmax(scores, softmax_col=softmax_col)
+        sum_scores = aggregate_sum_scores(scores, score_col=score_col)
+        cluster_mass = aggregate_cluster_mass(scores, softmax_col=softmax_col)
+        mean_scores.to_parquet(score_out / "mean_scores.parquet", index=False)
+        mean_softmax.to_parquet(score_out / "mean_softmax.parquet", index=False)
+        sum_scores.to_parquet(score_out / "sum_scores.parquet", index=False)
+        cluster_mass.to_parquet(score_out / "cluster_mass.parquet", index=False)
+        compute_model_deltas(cluster_mass, "cluster_mass").to_parquet(score_out / "model_deltas.parquet", index=False)
+        mark_completed(score_out, {"num_score_rows": len(scores), "score_col": score_col})
+        written[score_name] = str(score_out)
+    mark_completed(out, {"num_score_rows": len(scores), "score_variants": sorted(written)})
     write_status(rd, "completed", "aggregates", {"vector_type": vector_type})
 
 

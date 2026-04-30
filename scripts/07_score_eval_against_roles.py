@@ -8,7 +8,7 @@ from safetensors.numpy import load_file
 
 from persona_exp.config import get_model, load_config, run_dir
 from persona_exp.io import mark_completed, write_status
-from persona_exp.scoring import score_dot, softmax_scores
+from persona_exp.scoring import score_cosine, score_dot, score_whitened_dot, softmax_scores
 from persona_exp.utils import add_common_args
 
 
@@ -36,11 +36,24 @@ def main() -> None:
             v_root = rd / "role_vectors" / f"model={model_cfg.name}" / f"layer={layer_tag}"
             v = load_file(str(v_root / f"role_vectors_{vector_type}.safetensors"))["role_vectors"]
             v_meta = pd.read_parquet(v_root / f"role_vector_metadata_{vector_type}.parquet")
-            scores = score_dot(h, v)
-            probs = softmax_scores(scores, float(cfg["scoring"]["softmax"]["temperature"]))
+            score_mats = {
+                "score_dot": score_dot(h, v),
+                "score_cosine": score_cosine(h, v),
+                "score_whitened_dot": score_whitened_dot(h, v),
+            }
+            probs = {
+                name: softmax_scores(scores, float(cfg["scoring"]["softmax"]["temperature"]))
+                for name, scores in score_mats.items()
+            }
             rows = []
             for i, sample in h_meta.reset_index(drop=True).iterrows():
                 for j, role in v_meta.reset_index(drop=True).iterrows():
+                    score_values = {name: float(scores[i, j]) for name, scores in score_mats.items()}
+                    prob_values = {
+                        f"{name}_softmax_T1": float(prob_matrix[i, j])
+                        for name, prob_matrix in probs.items()
+                    }
+                    prob_values["score_softmax_T1"] = prob_values["score_dot_softmax_T1"]
                     rows.append(
                         {
                             "model_name": model_cfg.name,
@@ -56,8 +69,8 @@ def main() -> None:
                             "prompt_source_metadata_json": sample.get("source_metadata_json", "{}"),
                             "role_id": role["role_id"],
                             "role_cluster": role["role_cluster"],
-                            "score_dot": float(scores[i, j]),
-                            "score_softmax_T1": float(probs[i, j]),
+                            **score_values,
+                            **prob_values,
                         }
                     )
             score_dir = out_root / f"site={site}" / f"layer={layer_tag}"
