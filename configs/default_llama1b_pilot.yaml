@@ -37,7 +37,7 @@ formatting:
     Assistant:
 
 extraction:
-  layer_fracs: [0.25, 0.50, 0.75]
+  layer_fracs: [0.50]
   role_site: role_response_mean
   eval_sites: [assistant_marker_final_token, gen_mean_20]
   followup_eval_sites: [pre_assistant_final_token, gen_first_token, gen_mean_5]
