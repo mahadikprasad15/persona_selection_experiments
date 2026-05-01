@@ -1,0 +1,84 @@
+run:
+  name: llama32_3b_pilot_v001
+  seed: 42
+  output_dir: runs/llama32_3b_pilot_v001
+  shard_size: 512
+  resume: true
+
+models:
+  - name: llama32_3b_base
+    hf_id: meta-llama/Llama-3.2-3B
+    stage: base
+    dtype: float16
+    device: auto
+  - name: llama32_3b_instruct
+    hf_id: meta-llama/Llama-3.2-3B-Instruct
+    stage: instruct
+    dtype: float16
+    device: auto
+
+data:
+  personas_path: data/personas/aa_roles_50.jsonl
+  role_clusters_path: data/personas/role_clusters_v1.json
+  questions_path: data/questions/aa_shared_questions_50.jsonl
+  role_templates_path: data/templates/aa_role_instructions_2.jsonl
+  eval_prompts:
+    neutral: data/eval_prompts/neutral_200.jsonl
+    harmful: data/eval_prompts/harmful_100.jsonl
+    deception: data/eval_prompts/deception_100.jsonl
+    sycophancy: data/eval_prompts/sycophancy_100.jsonl
+    jailbreak: data/eval_prompts/jailbreak_100.jsonl
+    vulnerable_user: data/eval_prompts/vulnerable_user_100.jsonl
+
+formatting:
+  style: plain_user_assistant
+  template: |
+    User: {user_text}
+    Assistant:
+
+extraction:
+  layer_fracs: [0.50]
+  role_site: role_response_mean
+  eval_sites:
+    - assistant_marker_final_token
+    - gen_first_token
+    - gen_mean_5
+    - gen_mean_20
+  followup_eval_sites: [pre_assistant_final_token]
+  activation_dtype: float16
+  store_full_token_activations: false
+  store_pooled_activations: true
+
+generation:
+  role:
+    max_new_tokens: 128
+    do_sample: false
+    temperature: 0.0
+    batch_size: 4
+  eval:
+    max_new_tokens: 96
+    do_sample: false
+    temperature: 0.0
+    batch_size: 4
+
+role_vectors:
+  vector_types: [raw, question_residualized, question_residualized_centered]
+  default_vector_type: question_residualized_centered
+  heldout_question_frac: 0.2
+
+scoring:
+  main_score_type: dot
+  followup_score_types: [cosine, whitened_dot]
+  softmax:
+    enabled: true
+    temperature: 1.0
+
+aggregation:
+  main: [mean_score, mean_softmax, cluster_mass]
+
+storage:
+  shard_size:
+    role_rollouts: 1000
+    role_activations: 512
+    eval_rollouts: 1000
+    eval_activations: 512
